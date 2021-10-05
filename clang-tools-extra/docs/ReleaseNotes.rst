@@ -85,6 +85,11 @@ New checks
   Finds virtual classes whose destructor is neither public and virtual nor
   protected and non-virtual.
 
+- New :doc:`misc-add-getter
+  <clang-tidy/checks/misc-add-getter>` check.
+
+  FIXME: add release notes.
+
 - New :doc:`readability-identifier-length
   <clang-tidy/checks/readability-identifier-length>` check.
 
