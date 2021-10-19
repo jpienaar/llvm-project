@@ -22,23 +22,13 @@ namespace tidy {
 namespace misc {
 
 void AddGetterCheck::registerMatchers(MatchFinder *finder) {
-#define WITH_GETTER(X)                                                         \
-  finder->addMatcher(                                                          \
-      cxxMemberCallExpr(callee(cxxMethodDecl(hasName(X)))).bind("call"),       \
-      this);                                                                   \
-  finder->addMatcher(                                                          \
-      cxxMemberCallExpr(callee(cxxMethodDecl(hasName(X "Attr"))))              \
-          .bind("call"),                                                       \
-      this);                                                                   \
-  finder->addMatcher(                                                          \
-      cxxMemberCallExpr(callee(cxxMethodDecl(hasName(X "AttrName"))))          \
-          .bind("call"),                                                       \
-      this);                                                                   \
-  finder->addMatcher(                                                          \
-      cxxMemberCallExpr(callee(cxxMethodDecl(hasName(X "Mutable"))))           \
-          .bind("call"),                                                       \
-      this);
+#define WITH_GETTER(X) X, X "Attr", X "AttrName", X "Mutable",
+  finder->addMatcher(cxxMemberCallExpr(callee(cxxMethodDecl(hasAnyName(
 #include "/tmp/match.inc"
+    "SomeLongNameThatShouldntMatchToJustAvoidTheNeedForMeToMakeSmarterMacroConcat"
+                                           ))))
+                         .bind("call"),
+                     this);
 }
 
 void AddGetterCheck::check(const MatchFinder::MatchResult &result) {
