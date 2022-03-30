@@ -25,6 +25,13 @@
 #include "TestAttrInterfaces.h.inc"
 #include "TestOpEnums.h.inc"
 
+// Class that is effectively ArrayRef but just with new hash value only
+// considering base pointer and size.
+class I64Array : public llvm::ArrayRef<int64_t> {
+public:
+  using llvm::ArrayRef<int64_t>::ArrayRef;
+};
+
 #define GET_ATTRDEF_CLASSES
 #include "TestAttrDefs.h.inc"
 

@@ -6,8 +6,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../../test/lib/Dialect/Test/TestDialect.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "gtest/gtest.h"
 
 using namespace mlir;
@@ -248,6 +251,44 @@ TEST(SparseElementsAttrTest, GetZero) {
   auto zeroStringValue = sparseString.getValues<Attribute>()[{1, 1}];
   EXPECT_TRUE(zeroStringValue.cast<StringAttr>().getValue().empty());
   EXPECT_TRUE(zeroStringValue.getType() == stringTy);
+}
+
+TEST(ExternConstantTest, Simple) {
+  MLIRContext context;
+  context.loadDialect<test::TestDialect>();
+
+  SmallVector<int64_t> val = {10, 20};
+
+  // Create extern constant attribute.
+  auto attr = test::TestExtern1DI64ElementsAttr::get(&context, val);
+  EXPECT_EQ("#test.e1di64_elements<[10, 20]>", debugString(attr));
+  // Verify that it is view into SmallVector above.
+  val = {30, 40};
+  EXPECT_EQ("#test.e1di64_elements<[30, 40]>", debugString(attr));
+
+  // Print and parse.
+  auto parsedAttr = mlir::parseAttribute(debugString(attr), &context)
+                        .cast<DenseElementsAttr>();
+  val = {50, 60};
+  // Verify that the parsed attribute is a DenseElementsAttr and doesn't share
+  // the same memory as val.
+  EXPECT_EQ("#test.e1di64_elements<[50, 60]>", debugString(attr));
+  EXPECT_EQ("dense<[30, 40]> : tensor<2xi64>", debugString(parsedAttr));
+
+  // Verify that we get the same uniqued Attribute from parsing.
+  val = {30, 40};
+  auto denseAttr = DenseIntElementsAttr::get(
+      RankedTensorType::get({2}, IntegerType::get(&context, 64)), val);
+  EXPECT_EQ(denseAttr, parsedAttr);
+
+  // The extern constants use the pointer to the data as key and hence two
+  // different arrays with the same value would not be considered equal.
+  SmallVector<int64_t> val2 = val;
+  EXPECT_EQ(attr, test::TestExtern1DI64ElementsAttr::get(&context, val));
+  EXPECT_EQ(test::TestExtern1DI64ElementsAttr::get(&context, val),
+            test::TestExtern1DI64ElementsAttr::get(&context, val));
+  EXPECT_NE(attr, test::TestExtern1DI64ElementsAttr::get(&context, val2));
+  EXPECT_NE(attr, test::TestExtern1DI64ElementsAttr::get(&context, val2));
 }
 
 } // namespace

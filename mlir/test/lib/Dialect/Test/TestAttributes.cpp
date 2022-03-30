@@ -14,6 +14,7 @@
 #include "TestAttributes.h"
 #include "TestDialect.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LogicalResult.h"
@@ -24,6 +25,13 @@
 
 using namespace mlir;
 using namespace test;
+
+namespace llvm {
+hash_code hash_value(I64Array s) {
+  // Hash only based on base pointer and size.
+  return hash_combine(&s.front(), s.size());
+}
+} // namespace llvm
 
 //===----------------------------------------------------------------------===//
 // AttrWithSelfTypeParamAttr
@@ -125,6 +133,32 @@ TestI64ElementsAttr::verify(function_ref<InFlightDiagnostic()> emitError,
     return emitError() << "expected single rank 64-bit shape type, but got: "
                        << type;
   return success();
+}
+
+Attribute TestExtern1DI64ElementsAttr::parse(AsmParser &parser, Type type) {
+  SmallVector<int64_t> elements;
+  if (parser.parseLess() || parser.parseLSquare())
+    return Attribute();
+  int64_t intVal;
+  while (succeeded(*parser.parseOptionalInteger(intVal))) {
+    elements.push_back(intVal);
+    if (parser.parseOptionalComma())
+      break;
+  }
+
+  if (parser.parseRSquare() || parser.parseGreater())
+    return Attribute();
+  // Return a ArrayAttr instead. This means that roundtripping through textual
+  // form loses the extern'ness of the attribute.
+  type = RankedTensorType::get({static_cast<long>(elements.size())},
+                               parser.getBuilder().getI64Type());
+  return DenseIntElementsAttr::get(type, elements);
+}
+
+void TestExtern1DI64ElementsAttr::print(mlir::AsmPrinter &printer) const {
+  printer << "<[";
+  llvm::interleaveComma(getElements(), printer);
+  printer << "]>";
 }
 
 LogicalResult

@@ -111,6 +111,37 @@ def TestI64ElementsAttr : Test_Attr<"TestI64Elements", [
   let hasCustomAssemblyFormat = 1;
 }
 
+// Extern ArrayRef whose pointer is effectively uniqued and not the contents,
+// and which require the user ensures the lifetime of the array to exceed
+// context one.
+def I64ExternArrayRefParameter : AttrOrTypeParameter<"I64Array", ""> {
+  let cppStorageType =  "I64Array";
+}
+
+// Test simple extern 1D vector using ElementsAttrInterface.
+def TestExtern1DI64ElementsAttr : Test_Attr<"TestExtern1DI64Elements", [
+    ElementsAttrInterface
+  ]> {
+  let mnemonic = "e1di64_elements";
+  let parameters = (ins
+    I64ExternArrayRefParameter:$elements
+  );
+  let extraClassDeclaration = [{
+    /// The set of data types that can be iterated by this attribute.
+    using ContiguousIterableTypesT = std::tuple<int64_t>;
+
+    /// Provide begin iterators for the various iterable types.
+    // * int64_t
+    auto value_begin_impl(OverloadToken<int64_t>) const {
+      return getElements().begin();
+    }
+
+    int64_t getNumElements() const { return getElements().size(); }
+    int64_t size() const { return getElements().size(); }
+  }];
+  let hasCustomAssemblyFormat = 1;
+}
+
 def TestSubElementsAccessAttr : Test_Attr<"TestSubElementsAccess", [
     DeclareAttrInterfaceMethods<SubElementAttrInterface,
         ["replaceImmediateSubAttribute"]>
