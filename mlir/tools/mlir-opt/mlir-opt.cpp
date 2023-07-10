@@ -12,6 +12,7 @@
 
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
@@ -263,6 +264,10 @@ int main(int argc, char **argv) {
   DialectRegistry registry;
   registerAllDialects(registry);
   registerAllExtensions(registry);
+
+  registry.addExtension(+[](MLIRContext *ctx, BuiltinDialect *dialect) {
+    mlir::builtin_dialect_detail::addBytecodeInterface(dialect);
+  });
 
 #ifdef MLIR_INCLUDE_TESTS
   ::test::registerTestDialect(registry);

@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/BuiltinDialect.h"
-#include "BuiltinDialectBytecode.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -118,7 +117,6 @@ void BuiltinDialect::initialize() {
 
   auto &blobInterface = addInterface<BuiltinBlobManagerInterface>();
   addInterface<BuiltinOpAsmDialectInterface>(blobInterface);
-  builtin_dialect_detail::addBytecodeInterface(this);
 }
 
 //===----------------------------------------------------------------------===//

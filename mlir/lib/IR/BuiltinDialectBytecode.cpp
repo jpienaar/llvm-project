@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "BuiltinDialectBytecode.h"
 #include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinDialect.h"

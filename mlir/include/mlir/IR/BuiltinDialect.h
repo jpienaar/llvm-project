@@ -22,4 +22,15 @@
 
 #include "mlir/IR/BuiltinDialect.h.inc"
 
+namespace mlir {
+namespace builtin_dialect_detail {
+/// Add the interfaces necessary for encoding the builtin dialect components in
+/// bytecode.
+void addBytecodeInterface(BuiltinDialect *dialect);
+
+// Note: This is also where readType etc could be exposed to be invoked by
+// another interface.
+} // namespace builtin_dialect_detail
+} // namespace mlir
+
 #endif // MLIR_IR_BUILTINDIALECT_H_

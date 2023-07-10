@@ -10,6 +10,8 @@
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinDialect.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
@@ -39,6 +41,14 @@ module @TestDialectResources attributes {
 
 TEST(Bytecode, MultiModuleWithResource) {
   MLIRContext context;
+  DialectRegistry registry;
+  registry.insert<BuiltinDialect>();
+
+  registry.addExtension(+[](MLIRContext *ctx, BuiltinDialect *dialect) {
+      mlir::builtin_dialect_detail::addBytecodeInterface(dialect);
+    });
+  context.appendDialectRegistry(registry);
+
   Builder builder(&context);
   ParserConfig parseConfig(&context);
   OwningOpRef<Operation *> module =
