@@ -1288,7 +1288,7 @@ py::object PyOperation::create(const std::string &name,
                                std::optional<py::dict> attributes,
                                std::optional<std::vector<PyBlock *>> successors,
                                int regions, DefaultingPyLocation location,
-                               const py::object &maybeIp) {
+                               const py::object &maybeIp, bool inferType) {
   llvm::SmallVector<MlirValue, 4> mlirOperands;
   llvm::SmallVector<MlirType, 4> mlirResults;
   llvm::SmallVector<MlirBlock, 4> mlirSuccessors;
@@ -1367,6 +1367,7 @@ py::object PyOperation::create(const std::string &name,
   if (!mlirOperands.empty())
     mlirOperationStateAddOperands(&state, mlirOperands.size(),
                                   mlirOperands.data());
+  state.enableResultTypeInference = inferType;
   if (!mlirResults.empty())
     mlirOperationStateAddResults(&state, mlirResults.size(),
                                  mlirResults.data());
@@ -1398,6 +1399,8 @@ py::object PyOperation::create(const std::string &name,
 
   // Construct the operation.
   MlirOperation operation = mlirOperationCreate(&state);
+  if (!operation.ptr)
+    throw py::value_error("Operation creation failed");
   PyOperationRef created =
       PyOperation::createDetached(location->getContext(), operation);
   maybeInsertOperation(created, maybeIp);
@@ -1441,13 +1444,12 @@ void PyOperation::erase() {
 // PyOpView
 //------------------------------------------------------------------------------
 
-py::object
-PyOpView::buildGeneric(const py::object &cls, py::list resultTypeList,
-                       py::list operandList, std::optional<py::dict> attributes,
-                       std::optional<std::vector<PyBlock *>> successors,
-                       std::optional<int> regions,
-                       DefaultingPyLocation location,
-                       const py::object &maybeIp) {
+py::object PyOpView::buildGeneric(
+    const py::object &cls, std::optional<py::list> resultTypeList,
+    py::list operandList, std::optional<py::dict> attributes,
+    std::optional<std::vector<PyBlock *>> successors,
+    std::optional<int> regions, DefaultingPyLocation location,
+    const py::object &maybeIp) {
   PyMlirContextRef context = location->getContext();
   // Class level operation construction metadata.
   std::string name = py::cast<std::string>(cls.attr("OPERATION_NAME"));
@@ -1486,49 +1488,15 @@ PyOpView::buildGeneric(const py::object &cls, py::list resultTypeList,
 
   // Unpack results.
   std::vector<PyType *> resultTypes;
-  resultTypes.reserve(resultTypeList.size());
-  if (resultSegmentSpecObj.is_none()) {
-    // Non-variadic result unpacking.
-    for (const auto &it : llvm::enumerate(resultTypeList)) {
-      try {
-        resultTypes.push_back(py::cast<PyType *>(it.value()));
-        if (!resultTypes.back())
-          throw py::cast_error();
-      } catch (py::cast_error &err) {
-        throw py::value_error((llvm::Twine("Result ") +
-                               llvm::Twine(it.index()) + " of operation \"" +
-                               name + "\" must be a Type (" + err.what() + ")")
-                                  .str());
-      }
-    }
-  } else {
-    // Sized result unpacking.
-    auto resultSegmentSpec = py::cast<std::vector<int>>(resultSegmentSpecObj);
-    if (resultSegmentSpec.size() != resultTypeList.size()) {
-      throw py::value_error((llvm::Twine("Operation \"") + name +
-                             "\" requires " +
-                             llvm::Twine(resultSegmentSpec.size()) +
-                             " result segments but was provided " +
-                             llvm::Twine(resultTypeList.size()))
-                                .str());
-    }
-    resultSegmentLengths.reserve(resultTypeList.size());
-    for (const auto &it :
-         llvm::enumerate(llvm::zip(resultTypeList, resultSegmentSpec))) {
-      int segmentSpec = std::get<1>(it.value());
-      if (segmentSpec == 1 || segmentSpec == 0) {
-        // Unpack unary element.
+  if (resultTypeList.has_value()) {
+    resultTypes.reserve(resultTypeList->size());
+    if (resultSegmentSpecObj.is_none()) {
+      // Non-variadic result unpacking.
+      for (const auto &it : llvm::enumerate(resultTypeList.value())) {
         try {
-          auto *resultType = py::cast<PyType *>(std::get<0>(it.value()));
-          if (resultType) {
-            resultTypes.push_back(resultType);
-            resultSegmentLengths.push_back(1);
-          } else if (segmentSpec == 0) {
-            // Allowed to be optional.
-            resultSegmentLengths.push_back(0);
-          } else {
-            throw py::cast_error("was None and result is not optional");
-          }
+          resultTypes.push_back(py::cast<PyType *>(it.value()));
+          if (!resultTypes.back())
+            throw py::cast_error();
         } catch (py::cast_error &err) {
           throw py::value_error((llvm::Twine("Result ") +
                                  llvm::Twine(it.index()) + " of operation \"" +
@@ -1536,35 +1504,73 @@ PyOpView::buildGeneric(const py::object &cls, py::list resultTypeList,
                                  ")")
                                     .str());
         }
-      } else if (segmentSpec == -1) {
-        // Unpack sequence by appending.
-        try {
-          if (std::get<0>(it.value()).is_none()) {
-            // Treat it as an empty list.
-            resultSegmentLengths.push_back(0);
-          } else {
-            // Unpack the list.
-            auto segment = py::cast<py::sequence>(std::get<0>(it.value()));
-            for (py::object segmentItem : segment) {
-              resultTypes.push_back(py::cast<PyType *>(segmentItem));
-              if (!resultTypes.back()) {
-                throw py::cast_error("contained a None item");
-              }
+      }
+    } else {
+      // Sized result unpacking.
+      auto resultSegmentSpec = py::cast<std::vector<int>>(resultSegmentSpecObj);
+      if (resultSegmentSpec.size() != resultTypeList->size()) {
+        throw py::value_error((llvm::Twine("Operation \"") + name +
+                               "\" requires " +
+                               llvm::Twine(resultSegmentSpec.size()) +
+                               " result segments but was provided " +
+                               llvm::Twine(resultTypeList->size()))
+                                  .str());
+      }
+      resultSegmentLengths.reserve(resultTypeList->size());
+      for (const auto &it : llvm::enumerate(
+               llvm::zip(resultTypeList.value(), resultSegmentSpec))) {
+        int segmentSpec = std::get<1>(it.value());
+        if (segmentSpec == 1 || segmentSpec == 0) {
+          // Unpack unary element.
+          try {
+            auto *resultType = py::cast<PyType *>(std::get<0>(it.value()));
+            if (resultType) {
+              resultTypes.push_back(resultType);
+              resultSegmentLengths.push_back(1);
+            } else if (segmentSpec == 0) {
+              // Allowed to be optional.
+              resultSegmentLengths.push_back(0);
+            } else {
+              throw py::cast_error("was None and result is not optional");
             }
-            resultSegmentLengths.push_back(segment.size());
+          } catch (py::cast_error &err) {
+            throw py::value_error((llvm::Twine("Result ") +
+                                   llvm::Twine(it.index()) +
+                                   " of operation \"" + name +
+                                   "\" must be a Type (" + err.what() + ")")
+                                      .str());
           }
-        } catch (std::exception &err) {
-          // NOTE: Sloppy to be using a catch-all here, but there are at least
-          // three different unrelated exceptions that can be thrown in the
-          // above "casts". Just keep the scope above small and catch them all.
-          throw py::value_error((llvm::Twine("Result ") +
-                                 llvm::Twine(it.index()) + " of operation \"" +
-                                 name + "\" must be a Sequence of Types (" +
-                                 err.what() + ")")
-                                    .str());
+        } else if (segmentSpec == -1) {
+          // Unpack sequence by appending.
+          try {
+            if (std::get<0>(it.value()).is_none()) {
+              // Treat it as an empty list.
+              resultSegmentLengths.push_back(0);
+            } else {
+              // Unpack the list.
+              auto segment = py::cast<py::sequence>(std::get<0>(it.value()));
+              for (py::object segmentItem : segment) {
+                resultTypes.push_back(py::cast<PyType *>(segmentItem));
+                if (!resultTypes.back()) {
+                  throw py::cast_error("contained a None item");
+                }
+              }
+              resultSegmentLengths.push_back(segment.size());
+            }
+          } catch (std::exception &err) {
+            // NOTE: Sloppy to be using a catch-all here, but there are at least
+            // three different unrelated exceptions that can be thrown in the
+            // above "casts". Just keep the scope above small and catch them
+            // all.
+            throw py::value_error(
+                (llvm::Twine("Result ") + llvm::Twine(it.index()) +
+                 " of operation \"" + name +
+                 "\" must be a Sequence of Types (" + err.what() + ")")
+                    .str());
+          }
+        } else {
+          throw py::value_error("Unexpected segment spec");
         }
-      } else {
-        throw py::value_error("Unexpected segment spec");
       }
     }
   }
@@ -1694,7 +1700,8 @@ PyOpView::buildGeneric(const py::object &cls, py::list resultTypeList,
                              /*operands=*/std::move(operands),
                              /*attributes=*/std::move(attributes),
                              /*successors=*/std::move(successors),
-                             /*regions=*/*regions, location, maybeIp);
+                             /*regions=*/*regions, location, maybeIp,
+                             !resultTypeList);
 }
 
 pybind11::object PyOpView::constructDerived(const pybind11::object &cls,
@@ -2854,7 +2861,7 @@ void mlir::python::populateIRCore(py::module &m) {
                   py::arg("attributes") = py::none(),
                   py::arg("successors") = py::none(), py::arg("regions") = 0,
                   py::arg("loc") = py::none(), py::arg("ip") = py::none(),
-                  kOperationCreateDocstring)
+                  py::arg("infer_type") = false, kOperationCreateDocstring)
       .def_static(
           "parse",
           [](const std::string &sourceStr, const std::string &sourceName,
