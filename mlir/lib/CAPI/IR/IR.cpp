@@ -16,9 +16,11 @@
 #include "mlir/CAPI/Utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Verifier.h"
@@ -299,6 +301,7 @@ MlirOperationState mlirOperationStateGet(MlirStringRef name, MlirLocation loc) {
   state.successors = nullptr;
   state.nAttributes = 0;
   state.attributes = nullptr;
+  state.enablePropertyConversion = false;
   state.enableResultTypeInference = false;
   return state;
 }
@@ -339,31 +342,54 @@ void mlirOperationStateEnableResultTypeInference(MlirOperationState *state) {
 // Operation API.
 //===----------------------------------------------------------------------===//
 
-static LogicalResult inferOperationTypes(OperationState &state) {
+static LogicalResult inferOperationTypes(OperationState &state,
+                                         bool convertToProperties) {
   MLIRContext *context = state.getContext();
   std::optional<RegisteredOperationName> info = state.name.getRegisteredInfo();
   if (!info) {
     emitError(state.location)
         << "type inference was requested for the operation " << state.name
-        << ", but the operation was not registered. Ensure that the dialect "
+        << ", but the operation was not registered; ensure that the dialect "
            "containing the operation is linked into MLIR and registered with "
            "the context";
     return failure();
   }
 
-  // Fallback to inference via an op interface.
   auto *inferInterface = info->getInterface<InferTypeOpInterface>();
   if (!inferInterface) {
     emitError(state.location)
         << "type inference was requested for the operation " << state.name
-        << ", but the operation does not support type inference. Result "
-           "types must be specified explicitly.";
+        << ", but the operation does not support type inference; result "
+           "types must be specified explicitly";
     return failure();
+  }
+
+  OpaqueProperties properties = state.getRawProperties();
+
+  InFlightDiagnostic diag;
+
+  if (convertToProperties) {
+    char* prop = new char[info->getOpPropertyByteSize()];
+    properties = OpaqueProperties(prop);
+    if (failed(info->setOpPropertiesFromAttribute(state.name,
+                                       properties,
+                                       state.attributes.getDictionary(context), &diag))) {
+      return failure();
+    }
+
+    if (succeeded(inferInterface->inferReturnTypes(
+            context, state.location, state.operands,
+            state.attributes.getDictionary(context),
+            properties,
+            state.regions, state.types)))
+      return success();
+    delete [] prop;
   }
 
   if (succeeded(inferInterface->inferReturnTypes(
           context, state.location, state.operands,
-          state.attributes.getDictionary(context), state.getRawProperties(),
+          state.attributes.getDictionary(context),
+          properties,
           state.regions, state.types)))
     return success();
 
@@ -401,11 +427,16 @@ MlirOperation mlirOperationCreate(MlirOperationState *state) {
   if (state->enableResultTypeInference) {
     assert(cppState.types.empty() &&
            "result type inference enabled and result types provided");
-    if (failed(inferOperationTypes(cppState)))
+    if (failed(inferOperationTypes(cppState, state->enablePropertyConversion)))
       return {nullptr};
   }
 
-  MlirOperation result = wrap(Operation::create(cppState));
+  Operation* op = Operation::create(cppState);
+  if (!op)
+    return {nullptr};
+
+  MlirOperation result = wrap(op);
+
   return result;
 }
 

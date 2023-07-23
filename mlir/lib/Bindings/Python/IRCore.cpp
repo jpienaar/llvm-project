@@ -1288,7 +1288,7 @@ py::object PyOperation::create(const std::string &name,
                                std::optional<py::dict> attributes,
                                std::optional<std::vector<PyBlock *>> successors,
                                int regions, DefaultingPyLocation location,
-                               const py::object &maybeIp, bool inferType) {
+                               const py::object &maybeIp, bool inferType, bool convertProperties) {
   llvm::SmallVector<MlirValue, 4> mlirOperands;
   llvm::SmallVector<MlirType, 4> mlirResults;
   llvm::SmallVector<MlirBlock, 4> mlirSuccessors;
@@ -1368,6 +1368,8 @@ py::object PyOperation::create(const std::string &name,
     mlirOperationStateAddOperands(&state, mlirOperands.size(),
                                   mlirOperands.data());
   state.enableResultTypeInference = inferType;
+  // Python part does not support properties directly yet.
+  state.enablePropertyConversion = convertProperties;
   if (!mlirResults.empty())
     mlirOperationStateAddResults(&state, mlirResults.size(),
                                  mlirResults.data());
@@ -1449,7 +1451,8 @@ py::object PyOpView::buildGeneric(
     py::list operandList, std::optional<py::dict> attributes,
     std::optional<std::vector<PyBlock *>> successors,
     std::optional<int> regions, DefaultingPyLocation location,
-    const py::object &maybeIp) {
+    const py::object &maybeIp,
+    bool convertProperties) {
   PyMlirContextRef context = location->getContext();
   // Class level operation construction metadata.
   std::string name = py::cast<std::string>(cls.attr("OPERATION_NAME"));
@@ -1701,7 +1704,7 @@ py::object PyOpView::buildGeneric(
                              /*attributes=*/std::move(attributes),
                              /*successors=*/std::move(successors),
                              /*regions=*/*regions, location, maybeIp,
-                             !resultTypeList);
+                             !resultTypeList, true);
 }
 
 pybind11::object PyOpView::constructDerived(const pybind11::object &cls,
@@ -2861,7 +2864,9 @@ void mlir::python::populateIRCore(py::module &m) {
                   py::arg("attributes") = py::none(),
                   py::arg("successors") = py::none(), py::arg("regions") = 0,
                   py::arg("loc") = py::none(), py::arg("ip") = py::none(),
-                  py::arg("infer_type") = false, kOperationCreateDocstring)
+                  py::arg("infer_type") = false,
+                  py::arg("convert_properties") = false,
+                  kOperationCreateDocstring)
       .def_static(
           "parse",
           [](const std::string &sourceStr, const std::string &sourceName,
@@ -2923,6 +2928,7 @@ void mlir::python::populateIRCore(py::module &m) {
       py::arg("operands") = py::none(), py::arg("attributes") = py::none(),
       py::arg("successors") = py::none(), py::arg("regions") = py::none(),
       py::arg("loc") = py::none(), py::arg("ip") = py::none(),
+      py::arg("convert_properties") = false,
       "Builds a specific, generated OpView based on class level attributes.");
   opViewClass.attr("parse") = classmethod(
       [](const py::object &cls, const std::string &sourceStr,

@@ -973,15 +973,33 @@ public:
       propertiesDeleter = [](OpaqueProperties prop) {
         delete prop.as<const T *>();
       };
-      propertiesSetter = [](OpaqueProperties new_prop,
+      propertiesSetter = [](OpaqueProperties newProp,
                             const OpaqueProperties prop) {
-        *new_prop.as<T *>() = *prop.as<const T *>();
+        *newProp.as<T *>() = *prop.as<const T *>();
       };
       propertiesId = TypeID::get<T>();
     }
     assert(propertiesId == TypeID::get<T>() && "Inconsistent properties");
     return *properties.as<T *>();
   }
+
+  // This is an internal method 
+  void getOrAddOpqueProperties(int64_t size) {
+    if (!properties) {
+      char *p = new char[size];
+      properties = p;
+      propertiesDeleter = [](OpaqueProperties prop) {
+        delete prop.as<const char *>();
+      };
+      propertiesSetter = [](OpaqueProperties newProp,
+                            const OpaqueProperties prop) {
+        *newProp.as<char *>() = *prop.as<const char *>();
+      };
+      propertiesId = TypeID::get<char>();
+    }
+    assert(propertiesId == TypeID::get<char>() && "Inconsistent properties");
+  }
+
   OpaqueProperties getRawProperties() { return properties; }
 
   // Set the properties defined on this OpState on the given operation,

@@ -493,9 +493,7 @@ constexpr const char *initTemplate = R"Py(
     attributes = {{}
     regions = None
     {1}
-    super().__init__(self.build_generic(
-      attributes=attributes,{2} operands=operands,
-      successors=_ods_successors, regions=regions, loc=loc, ip=ip))
+    super().__init__(self.build_generic({2}))
 )Py";
 
 /// Template for appending a single element to the operand/result list.
@@ -919,9 +917,22 @@ static void emitDefaultOpBuilder(const Operator &op, raw_ostream &os) {
   }
   functionArgs.push_back("loc=None");
   functionArgs.push_back("ip=None");
+
+  SmallVector<std::string> initArgs;
+  initArgs.push_back("attributes=attributes");
+  initArgs.push_back("operands=operands");
+  initArgs.push_back("successors=_ods_successors");
+  initArgs.push_back("regions=regions");
+  initArgs.push_back("loc=loc");
+  initArgs.push_back("ip=ip");
+  if (!hasInferTypeInterface(op))
+      initArgs.push_back("results=results");
+  if (!op.getProperties().empty())
+    initArgs.push_back("convert_properties=True");
+
   os << llvm::formatv(initTemplate, llvm::join(functionArgs, ", "),
                       llvm::join(builderLines, "\n    "),
-                      hasInferTypeInterface(op) ? "" : " results=results,");
+                      llvm::join(initArgs, ", "));
 }
 
 static void emitSegmentSpec(

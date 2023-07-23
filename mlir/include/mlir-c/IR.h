@@ -350,6 +350,7 @@ struct MlirOperationState {
   MlirBlock *successors;
   intptr_t nAttributes;
   MlirNamedAttribute *attributes;
+  bool enablePropertyConversion;
   bool enableResultTypeInference;
 };
 typedef struct MlirOperationState MlirOperationState;

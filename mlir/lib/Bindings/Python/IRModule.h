@@ -656,7 +656,7 @@ public:
          std::optional<pybind11::dict> attributes,
          std::optional<std::vector<PyBlock *>> successors, int regions,
          DefaultingPyLocation location, const pybind11::object &ip,
-         bool inferType = false);
+         bool inferType, bool convertProperties);
 
   /// Creates an OpView suitable for this operation.
   pybind11::object createOpView();
@@ -710,7 +710,8 @@ public:
       pybind11::list operandList, std::optional<pybind11::dict> attributes,
       std::optional<std::vector<PyBlock *>> successors,
       std::optional<int> regions, DefaultingPyLocation location,
-      const pybind11::object &maybeIp);
+      const pybind11::object &maybeIp,
+      bool convertProperties);
 
   /// Construct an instance of a class deriving from OpView, bypassing its
   /// `__init__` method. The derived class will typically define a constructor
