@@ -20,6 +20,18 @@ def Transform_Dialect : Dialect {
 
   let hasOperationAttrVerify = 1;
   let extraClassDeclaration = [{
+      /// Return the registered transform libraries.
+      ::llvm::ArrayRef<::mlir::ModuleOp> getLibraryModules();
+
+      /// Register a Transform library module
+      void registerLibraryModule(OwningOpRef<ModuleOp> &&library);
+
+      /// Return the transform identified using symbol ref attr. The root
+      /// symbol is the resource while the nested references index into the
+      /// selected library.
+      ::mlir::Operation* getRegisteredTransform(::llvm::StringRef resource,
+        ::mlir::SymbolRefAttr ref);
+
       /// Name of the attribute attachable to the symbol table operation
       /// containing named sequences. This is used to trigger verification.
       constexpr const static ::llvm::StringLiteral
