@@ -13,6 +13,7 @@
 #ifndef MLIR_IR_OPIMPLEMENTATION_H
 #define MLIR_IR_OPIMPLEMENTATION_H
 
+#include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
@@ -1694,6 +1695,17 @@ using OpAsmSetValueNameFn = function_ref<void(Value, StringRef)>;
 /// A functor used to set the name of blocks in regions directly nested under
 /// an operation.
 using OpAsmSetBlockNameFn = function_ref<void(Block *, StringRef)>;
+
+class ExternalResourceDialectInterface
+    : public DialectInterface::Base<ExternalResourceDialectInterface> {
+public:
+  ExternalResourceDialectInterface(Dialect *dialect) : Base(dialect) {}
+
+  /// Return memory buffer corresponding to loaded external value if valid id.
+  virtual LogicalResult load(StringRef id, AsmResourceBlob& blob) const {
+    return failure();
+  }
+};
 
 class OpAsmDialectInterface
     : public DialectInterface::Base<OpAsmDialectInterface> {
