@@ -140,6 +140,13 @@ public:
   }
   InFlightDiagnostic emitError() const { return ::emitError(fileLoc); }
 
+  /// Emit an warning using the given arguments.
+  template <typename... Args>
+  InFlightDiagnostic emitWarning(Args &&...args) const {
+    return ::emitWarning(fileLoc).append(std::forward<Args>(args)...);
+  }
+  InFlightDiagnostic emitWarning() const { return ::emitWarning(fileLoc); }
+
   /// Parse a single byte from the stream.
   template <typename T>
   LogicalResult parseByte(T &value) {
@@ -919,6 +926,10 @@ public:
 
   InFlightDiagnostic emitError(const Twine &msg) const override {
     return reader.emitError(msg);
+  }
+
+  InFlightDiagnostic emitWarning(const Twine &msg) const {
+    return reader.emitWarning(msg);
   }
 
   FailureOr<const DialectVersion *>
@@ -1754,11 +1765,23 @@ LogicalResult BytecodeDialect::load(const DialectReader &reader,
   if (loadedDialect)
     interface = dyn_cast<BytecodeDialectInterface>(loadedDialect);
   if (!versionBuffer.empty()) {
-    if (!interface)
-      return reader.emitError("dialect '")
+    if (!interface) {
+      // If a written bytecode file has a dialect version while the reader's
+      // dialect doesn't, then it means version was introduced. Previously it
+      // would not have failed to parse except if parsing or verification
+      // failed, so retain that behavior but warn here. There is an argument to
+      // be made that previously it was allowed as there wasn't a way to detect
+      // that there was a change, while this indicates there was a change.
+      // Allowing this allows introducing a dialect version without breaking old
+      // readers where there were no other dialect changes. Given unversioned
+      // readers had no expectation about compatibility, this doesn't reduce
+      // guarantees while enabling providing them without breakage.
+      reader.emitWarning("dialect '")
              << name
              << "' does not implement the bytecode interface, "
                 "but found a version entry";
+      return success();
+    }
     EncodingReader encReader(versionBuffer, reader.getLoc());
     DialectReader versionReader = reader.withEncodingReader(encReader);
     loadedVersion = interface->readVersion(versionReader);
