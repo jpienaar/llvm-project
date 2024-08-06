@@ -61,12 +61,17 @@ class ThreadLocalCache {
   struct Owner {
     /// Save a pointer to the reference and write it to the newly created entry.
     Owner(Observer &observer)
-        : value(std::make_unique<ValueT>()), ptrRef(observer.ptr) {
+        : value(std::make_unique<ValueT>()), ptrRef(observer.ptr),
+          instanceState(observer.keepalive) {
       *observer.ptr = value.get();
     }
     ~Owner() {
-      if (std::shared_ptr<ValueT *> ptr = ptrRef.lock())
-        *ptr = nullptr;
+      if (instanceState.lock()) {
+        llvm::sys::SmartScopedLock<true> threadInstanceLock(
+            instanceState.lock()->instanceMutex);
+        if (std::shared_ptr<ValueT *> ptr = ptrRef.lock())
+          *ptr = nullptr;
+      }
     }
 
     Owner(Owner &&) = default;
@@ -74,6 +79,7 @@ class ThreadLocalCache {
 
     std::unique_ptr<ValueT> value;
     std::weak_ptr<ValueT *> ptrRef;
+    std::weak_ptr<PerInstanceState> instanceState;
   };
 
   // Keep a separate shared_ptr protected state that can be acquired atomically
