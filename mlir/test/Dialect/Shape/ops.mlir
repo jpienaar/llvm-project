@@ -119,6 +119,43 @@ func.func @test_constraints() {
   return
 }
 
+// Test function that checks if last dim is multiple of 4 and then runs section
+// assuming true.
+// https://mlir.llvm.org/docs/Dialects/ShapeDialect/#different-stages-of-lowering-shape-dialect matmul example is semi in this direction.
+func.func @test_section_assume_true(%arg: vector<2x3xf32>) {
+  %cN = arith.constant -1 : index
+  %c4 = arith.constant 4 : index
+  %0 = shape.dim %arg, %cN : vector<2x3xf32>, index -> index
+  // Compute mod to see if it is multiple of 4.
+  %1 = arith.mod %0, %c4 : index
+  %c0 = arith.constant 0 : index
+  %pred = arith.cmpi eq, %1, %c0
+  %3 = shape.cstr_require %pred, "last dim must be multiple of 4"
+
+  // The constraint ones are actually side-effecting, so the above is sufficient
+  // to signify that one won't get here if the constraint is not satisfied.
+  // BUT it may be too much. I think you'd want something like the assuming but
+  // with an else - that does create a region though, which hampers folding
+  // but it could also avoid hoisting illegally. Many prefer the more plain
+  // assert based (also remind of https://github.com/llvm/torch-mlir/pull/3372
+  // right).
+  
+  // But assert based ones aren't part of use-def chains, so something like
+  // with_shape could enable easier tracing from your lowering. The other
+  // approach is to populate an analysis and then query it. So the above
+  // being in the IR doesn't matter as much in form, as long as it can be
+  // queried and associated with vectors.
+
+  // Now the above is too verbose ... something like affine maps would be
+  // more concise, except affine can't say "unknown times 4 == d" I think.
+  // Another way of writing the same thing is to divide and then multiply
+  // and assert equal. Think that's more difficult to match on.
+
+  // I was also wondering about doing like precondition, compute, post-condition
+  // blocks with shape calculations. None of that exists in usable form though.
+  return
+}
+
 func.func @eq_on_extent_tensors(%lhs : tensor<?xindex>,
                            %rhs : tensor<?xindex>) {
   %w0 = shape.cstr_eq %lhs, %rhs : tensor<?xindex>, tensor<?xindex>
