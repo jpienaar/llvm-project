@@ -302,7 +302,16 @@ if "MLIR_OPT_CHECK_IR_ROUNDTRIP" in os.environ:
         ]
     )
 else:
-    tools.extend(["mlir-opt"])
+    tools.extend(
+        [
+            ToolSubst("mlir-opt", "mlir-opt --mlir-disable-threading --debug-only=greedy-rewriter", unresolved="fatal"),
+        ]
+        # And then replace FileCheck with a file sync for the patterns (note:
+        # one probably wants to just concat all, sort and unique post).
+        # Would this work for all tests? No. But should work for all dedicated
+        # pattern unit test (and if a pattern is not worhtwhile to test, its
+        # probably not needed to document).
+    )
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
