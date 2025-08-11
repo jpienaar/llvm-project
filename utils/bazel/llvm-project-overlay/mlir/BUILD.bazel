@@ -13390,6 +13390,33 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "mlir-pdll-runner",
+    srcs = [
+        "tools/mlir-pdll/mlir-pdll-runner.cpp",
+    ],
+    local_defines = ["MLIR_INCLUDE_TESTS"],
+    deps = [
+        ":AllPassesAndDialects",
+        ":IR",
+        ":PDLDialect",
+        ":PDLInterpDialect",
+        ":PDLLAST",
+        ":PDLLCodeGen",
+        ":PDLLODS",
+        ":PDLLParser",
+        ":PDLToPDLInterp",
+        ":Parser",
+        ":Pass",
+        ":RegisterAllDialects",
+        ":Rewrite",
+        ":Support",
+        ":TransformUtils",
+        "//llvm:Support",
+        "//mlir/test:TestDialect",
+    ],
+)
+
 td_library(
     name = "DialectConversionPdllFiles",
     srcs = ["include/mlir/Transforms/DialectConversion.pdll"],
