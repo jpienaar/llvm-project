@@ -14,6 +14,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassInstrumentation.h"
 #include "gtest/gtest.h"
 
 #include <memory>
@@ -116,6 +117,53 @@ struct AddSecondAttrFunctionPass
     op->setAttr("didProcess2", builder.getUnitAttr());
   }
 };
+
+/// PassInstrumentation to count pass callbacks.
+struct TestPassInstrumentation : public PassInstrumentation {
+  int beforePassCallbackCount = 0;
+  int afterPassCallbackCount = 0;
+  int afterPassFailedCallbackCount = 0;
+
+  void runBeforePass(Pass *pass, Operation *op) override {
+    if (isa<AddAttrFunctionPass>(pass)) {
+      ++beforePassCallbackCount;
+      signalPassFailure(pass);
+    }
+  }
+  void runAfterPass(Pass *pass, Operation *op) override {
+    if (isa<AddAttrFunctionPass>(pass))
+      ++afterPassCallbackCount;
+  }
+  void runAfterPassFailed(Pass *pass, Operation *op) override {
+      ++afterPassFailedCallbackCount;
+    }
+};
+
+TEST(PassManagerTest, PassInstrumentation) {
+  MLIRContext context;
+  context.loadDialect<func::FuncDialect>();
+  Builder builder(&context);
+
+  // Create a module with 1 function.
+  OwningOpRef<ModuleOp> module(ModuleOp::create(UnknownLoc::get(&context)));
+  auto func = func::FuncOp::create(builder.getUnknownLoc(), "test_func",
+                                   builder.getFunctionType({}, {}));
+  func.setPrivate();
+  module->push_back(func);
+
+  // Instantiate and run our pass.
+  auto pm = PassManager::on<ModuleOp>(&context);
+  auto instrumentation = std::make_unique<TestPassInstrumentation>();
+  auto *instrumentationPtr = instrumentation.get();
+  pm.addInstrumentation(std::move(instrumentation));
+  pm.addNestedPass<func::FuncOp>(std::make_unique<AddAttrFunctionPass>());
+  LogicalResult result = pm.run(module.get());
+  EXPECT_TRUE(failed(result));
+
+  EXPECT_EQ(instrumentationPtr->beforePassCallbackCount, 1);
+  EXPECT_EQ(instrumentationPtr->afterPassCallbackCount, 0);
+  EXPECT_EQ(instrumentationPtr->afterPassFailedCallbackCount, 1);
+}
 
 TEST(PassManagerTest, ExecutionAction) {
   MLIRContext context;
