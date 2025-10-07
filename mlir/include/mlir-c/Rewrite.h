@@ -389,6 +389,20 @@ MLIR_CAPI_EXPORTED void mlirPDLPatternModuleRegisterConstraintFunction(
     MlirPDLPatternModule pdlModule, MlirStringRef name,
     MlirPDLConstraintFunction constraintFn, void *userData);
 
+/// This function type is used as callbacks for PDL native matcher functions.
+/// Input values can be accessed by `values` with its size `nValues`;
+/// output values can be added into `results` by `mlirPDLResultListPushBack*`
+/// APIs. And the return value indicates whether the matcher succeeds.
+typedef MlirLogicalResult (*MlirPDLMatcherFunction)(
+    MlirPatternRewriter rewriter, MlirPDLResultList results, size_t nValues,
+    MlirPDLValue *values, void *userData);
+
+/// Register a matcher function into the given PDL pattern module.
+/// `userData` will be provided as an argument to the matcher function.
+MLIR_CAPI_EXPORTED void mlirPDLPatternModuleRegisterMatcherFunction(
+    MlirPDLPatternModule pdlModule, MlirStringRef name,
+    MlirPDLMatcherFunction matcherFn, void *userData);
+
 #endif // MLIR_ENABLE_PDL_IN_PATTERNMATCH
 
 #undef DEFINE_C_API_STRUCT

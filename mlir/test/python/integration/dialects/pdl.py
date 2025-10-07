@@ -1,4 +1,5 @@
-# RUN: %PYTHON %s 2>&1 | FileCheck %s
+# RUN: %PYTHON %s 2>&1 | tee %t
+# RUN: FileCheck %s < %t
 
 from mlir.dialects import arith, func, pdl
 from mlir.dialects.builtin import module
@@ -218,10 +219,9 @@ def test_pdl_register_function(module_):
 # CHECK: return %arg0 : i32
 @construct_and_print_in_module
 def test_pdl_register_function_constraint(module_):
-    load_myint_dialect()
+  load_myint_dialect()
 
-    module_ = Module.parse(
-        """
+  module_ = Module.parse("""
         func.func @f(%x : i32) -> i32 {
             %c0 = "myint.constant"() { value = 1 }: () -> (i32)
             %c1 = "myint.constant"() { value = -1 }: () -> (i32)
@@ -230,10 +230,70 @@ def test_pdl_register_function_constraint(module_):
             %c = "myint.add"(%b, %a): (i32, i32) -> (i32)
             func.return %c : i32
         }
-        """
-    )
+        """)
 
-    frozen = get_pdl_pattern_fold()
-    apply_patterns_and_fold_greedily(module_, frozen)
+  frozen = get_pdl_pattern_fold()
+  apply_patterns_and_fold_greedily(module_, frozen)
 
-    return module_
+  return module_
+
+
+def get_pdl_pattern_with_custom_matcher():
+  """Create a PDL pattern that uses a custom matcher function."""
+  with Location.unknown():
+    m = Module.create()
+    with InsertionPoint(m.body):
+      # Pattern that matches arith.addi operations
+      @pdl.pattern(benefit=1, sym_name="addi_with_matcher")
+      def pat():
+        index_type = pdl.TypeOp(IndexType.get())
+        operand0 = pdl.OperandOp(index_type)
+        operand1 = pdl.OperandOp(index_type)
+        op0 = pdl.OperationOp(
+            name="arith.addi", args=[operand0, operand1], types=[index_type]
+        )
+
+        # Use custom constraint function (matcher functions work as constraints)
+        pdl.ApplyNativeConstraintOp(
+            name="custom_matcher", args=[operand0, operand1], results_=[]
+        )
+
+        @pdl.rewrite()
+        def rew():
+          # Replace with multiplication
+          newOp = pdl.OperationOp(
+              name="arith.muli", args=[operand0, operand1], types=[index_type]
+          )
+          pdl.ReplaceOp(op0, with_op=newOp)
+
+  pdl_module = PDLModule(m)
+
+  # Register the custom matcher function using the new API
+  def custom_matcher(rewriter, results, values):
+    """Custom matcher that always returns True for demonstration."""
+    print("custom_matcher_values: ", len(values))
+    print("custom_matcher in op: ", values[0].owner.owner.name)
+    return True
+
+  pdl_module.register_matcher_function("custom_matcher", custom_matcher)
+  return pdl_module.freeze()
+
+
+# CHECK-LABEL: TEST: test_custom_matcher
+# CHECK: custom_matcher_values: 2
+# CHECK: custom_matcher in op: "add_func"
+@construct_and_print_in_module
+def test_custom_matcher(module_):
+  """Test custom matcher functionality with PDL patterns."""
+  index_type = IndexType.get()
+
+  # Create a test case
+  @module(sym_name="ir")
+  def ir():
+    @func.func(index_type, index_type)
+    def add_func(a, b):
+      return arith.addi(a, b)
+
+  frozen = get_pdl_pattern_with_custom_matcher()
+  apply_patterns_and_fold_greedily(module_, frozen)
+  return module_

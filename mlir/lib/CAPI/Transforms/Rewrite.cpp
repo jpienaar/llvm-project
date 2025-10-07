@@ -435,4 +435,18 @@ void mlirPDLPatternModuleRegisterConstraintFunction(
                                    userData));
       });
 }
+
+void mlirPDLPatternModuleRegisterMatcherFunction(
+    MlirPDLPatternModule pdlModule, MlirStringRef name,
+    MlirPDLMatcherFunction matcherFn, void *userData) {
+  unwrap(pdlModule)->registerConstraintFunction(
+      unwrap(name),
+      [userData, matcherFn](PatternRewriter &rewriter, PDLResultList &results,
+                            ArrayRef<PDLValue> values) -> LogicalResult {
+        std::vector<MlirPDLValue> mlirValues = wrap(values);
+        return unwrap(matcherFn(wrap(&rewriter), wrap(&results),
+                                mlirValues.size(), mlirValues.data(),
+                                userData));
+      });
+}
 #endif // MLIR_ENABLE_PDL_IN_PATTERNMATCH

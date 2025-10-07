@@ -103,6 +103,20 @@ public:
         fn.ptr());
   }
 
+  void registerMatcherFunction(const std::string &name,
+                               const nb::callable &fn) {
+    mlirPDLPatternModuleRegisterMatcherFunction(
+        get(), mlirStringRefCreate(name.data(), name.size()),
+        [](MlirPatternRewriter rewriter, MlirPDLResultList results,
+           size_t nValues, MlirPDLValue *values,
+           void *userData) -> MlirLogicalResult {
+          nb::handle f = nb::handle(static_cast<PyObject *>(userData));
+          return logicalResultFromObject(
+              f(rewriter, results, objectsFromPDLValues(nValues, values)));
+        },
+        fn.ptr());
+  }
+
 private:
   MlirPDLPatternModule module;
 };
@@ -225,6 +239,13 @@ void mlir::python::populateRewriteSubmodule(nb::module_ &m) {
           [](PyPDLPatternModule &self, const std::string &name,
              const nb::callable &fn) {
             self.registerConstraintFunction(name, fn);
+          },
+          nb::keep_alive<1, 3>())
+      .def(
+          "register_matcher_function",
+          [](PyPDLPatternModule &self, const std::string &name,
+             const nb::callable &fn) {
+            self.registerMatcherFunction(name, fn);
           },
           nb::keep_alive<1, 3>());
 #endif // MLIR_ENABLE_PDL_IN_PATTERNMATCH

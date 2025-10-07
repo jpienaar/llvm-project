@@ -11,6 +11,7 @@
 
 #include "mlir-c/Rewrite.h"
 #include "mlir-c/BuiltinTypes.h"
+#include "mlir-c/Dialect/PDL.h"
 #include "mlir-c/IR.h"
 
 #include <assert.h>
@@ -534,10 +535,80 @@ void testReplaceUses(MlirContext ctx) {
   mlirModuleDestroy(module);
 }
 
+#if MLIR_ENABLE_PDL_IN_PATTERNMATCH
+// Custom matcher callback function for testing
+MlirLogicalResult testMatcherCallback(MlirPatternRewriter rewriter,
+                                      MlirPDLResultList results, size_t nValues,
+                                      MlirPDLValue *values, void *userData) {
+  // Simple test matcher that always succeeds
+  fprintf(stderr, "Custom matcher called with %zu values\n", nValues);
+  return mlirLogicalResultSuccess();
+}
+
+void testCustomPdlMatcher(MlirContext ctx) {
+  // CHECK-LABEL: @testCustomMatcher
+  fprintf(stderr, "@testCustomMatcher\n");
+
+  // Create a simple PDL module for testing.
+  const char *pdlModuleString =
+      "pdl.pattern @test_pattern : benefit(1) {\n"
+      "  %type = pdl.type\n"
+      "  %op = pdl.operation \"test.op\" -> (%type : !pdl.type)\n"
+      "  pdl.apply_native_constraint \"test_matcher\"(%op : !pdl.operation)\n"
+      "  pdl.rewrite %op {\n"
+      "    %new_op = pdl.operation \"test.new_op\" -> (%type : !pdl.type)\n"
+      "    pdl.replace %op with %new_op\n"
+      "  }\n"
+      "}\n";
+
+  // Create PDL pattern module
+  MlirModule module = mlirModuleCreateParse(
+      ctx, mlirStringRefCreateFromCString(pdlModuleString));
+  if (mlirModuleIsNull(module)) {
+    fprintf(stderr, "Failed to parse PDL module\n");
+    return;
+  }
+  MlirPDLPatternModule pdlModule = mlirPDLPatternModuleFromModule(module);
+
+  // Register the custom matcher function
+  MlirStringRef matcherName = mlirStringRefCreateFromCString("test_matcher");
+  void *userData = NULL;
+  mlirPDLPatternModuleRegisterMatcherFunction(pdlModule, matcherName,
+                                              testMatcherCallback, userData);
+  // CHECK: Custom matcher registered successfully
+  fprintf(stderr, "Custom matcher registered successfully\n");
+
+  // Test module with op to match and replace.
+  const char *testModuleString = "module { %0 = \"test.op\"() : () -> i32 }";
+  MlirModule testModule = mlirModuleCreateParse(
+      ctx, mlirStringRefCreateFromCString(testModuleString));
+  if (mlirModuleIsNull(testModule)) {
+    fprintf(stderr, "Failed to parse test module\n");
+    return;
+  }
+
+  // Run the pattern matching
+  MlirRewritePatternSet patternSet =
+      mlirRewritePatternSetFromPDLPatternModule(pdlModule);
+  MlirFrozenRewritePatternSet patterns = mlirFreezeRewritePattern(patternSet);
+  MlirGreedyRewriteDriverConfig config = {0};
+  // CHECK: Custom matcher called with 1 values
+  mlirApplyPatternsAndFoldGreedily(testModule, patterns, config);
+
+  // Clean up
+  mlirModuleDestroy(testModule);
+  mlirPDLPatternModuleDestroy(pdlModule);
+  mlirFrozenRewritePatternSetDestroy(patterns);
+}
+#endif // MLIR_ENABLE_PDL_IN_PATTERNMATCH
+
 int main(void) {
   MlirContext ctx = mlirContextCreate();
   mlirContextSetAllowUnregisteredDialects(ctx, true);
   mlirContextGetOrLoadDialect(ctx, mlirStringRefCreateFromCString("builtin"));
+#if MLIR_ENABLE_PDL_IN_PATTERNMATCH
+  mlirDialectHandleRegisterDialect(mlirGetDialectHandle__pdl__(), ctx);
+#endif
 
   testInsertionPoint(ctx);
   testCreateBlock(ctx);
@@ -547,6 +618,10 @@ int main(void) {
   testMove(ctx);
   testOpModification(ctx);
   testReplaceUses(ctx);
+
+#if MLIR_ENABLE_PDL_IN_PATTERNMATCH
+  testCustomPdlMatcher(ctx);
+#endif
 
   mlirContextDestroy(ctx);
   return 0;

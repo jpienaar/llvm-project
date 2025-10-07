@@ -100,6 +100,7 @@ _add_capi_test_executable(mlir-capi-rewrite-test
   rewrite.c
   LINK_LIBS PRIVATE
     MLIRCAPIIR
+    MLIRCAPIPDL
     MLIRCAPIRegisterEverything
     MLIRCAPITransforms
 )
