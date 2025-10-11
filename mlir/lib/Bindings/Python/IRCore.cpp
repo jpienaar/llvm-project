@@ -18,6 +18,7 @@
 #include "mlir/Bindings/Python/Nanobind.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "nanobind/nanobind.h"
+#include "nanobind/operators.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -3417,6 +3418,20 @@ void mlir::python::populateIRCore(nb::module_ &m) {
           "other"_a)
       .def("__hash__",
            [](PyModule &self) { return mlirModuleHashValue(self.get()); });
+
+  //----------------------------------------------------------------------------
+  // Mapping of MlirLogicalResult.
+  //----------------------------------------------------------------------------
+  nb::class_<MlirLogicalResult>(m, "LogicalResult")
+      .def_prop_ro_static(
+          "success", [](nb::object &) { return mlirLogicalResultSuccess(); })
+      .def_prop_ro_static(
+          "failure", [](nb::object &) { return mlirLogicalResultFailure(); })
+      .def(nb::init<>())
+      .def("__eq__", [](MlirLogicalResult &self, MlirLogicalResult &other) {
+        return mlirLogicalResultIsFailure(self) ==
+               mlirLogicalResultIsFailure(other);
+      });
 
   //----------------------------------------------------------------------------
   // Mapping of Operation.

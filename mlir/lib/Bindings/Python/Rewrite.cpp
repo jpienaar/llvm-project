@@ -49,16 +49,24 @@ static std::vector<nb::object> objectsFromPDLValues(size_t nValues,
   return args;
 }
 
-// Convert the Python object to a boolean.
-// If it evaluates to False, treat it as success;
-// otherwise, treat it as failure.
-// Note that None is considered success.
+// Convert the Python object to a MlirLogicalResult.
 static MlirLogicalResult logicalResultFromObject(const nb::object &obj) {
-  if (obj.is_none())
-    return mlirLogicalResultSuccess();
+  // TODO: Simplify once we've surfaced below error message sufficiently/users
+  // have updated.
+  if (nb::isinstance<MlirLogicalResult>(obj))
+    return nb::cast<MlirLogicalResult>(obj);
 
-  return nb::cast<bool>(obj) ? mlirLogicalResultFailure()
-                             : mlirLogicalResultSuccess();
+  // Check to give a better error message for previous implicit behavior.
+  if (obj.is_none()) {
+    throw nb::type_error("Implicit conversion from None is deprecated, use "
+                         "LogicalResult explicitly.");
+  }
+  if (nb::isinstance<bool>(obj)) {
+    throw nb::type_error("Implicit bool conversion to LogicalResult is "
+                         "deprecated, use LogicalResult explicitly.");
+  }
+  // This is a catch-all that will fail with the normal nb::cast<> exception.
+  return nb::cast<MlirLogicalResult>(obj);
 }
 
 /// Owning Wrapper around a PDLPatternModule.

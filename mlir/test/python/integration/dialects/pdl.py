@@ -124,73 +124,76 @@ def load_myint_dialect():
 # i.e. add(constant0, constant1) -> constant2
 # where constant2 = constant0 + constant1.
 def get_pdl_pattern_fold():
-    m = Module.create()
-    i32 = IntegerType.get_signless(32)
-    with InsertionPoint(m.body):
+  m = Module.create()
+  i32 = IntegerType.get_signless(32)
+  with InsertionPoint(m.body):
 
-        @pdl.pattern(benefit=1, sym_name="myint_add_fold")
-        def pat():
-            t = pdl.TypeOp(i32)
-            a0 = pdl.AttributeOp()
-            a1 = pdl.AttributeOp()
-            c0 = pdl.OperationOp(
+    @pdl.pattern(benefit=1, sym_name="myint_add_fold")
+    def pat():
+      t = pdl.TypeOp(i32)
+      a0 = pdl.AttributeOp()
+      a1 = pdl.AttributeOp()
+      c0 = pdl.OperationOp(
                 name="myint.constant", attributes={"value": a0}, types=[t]
             )
-            c1 = pdl.OperationOp(
+      c1 = pdl.OperationOp(
                 name="myint.constant", attributes={"value": a1}, types=[t]
             )
-            v0 = pdl.ResultOp(c0, 0)
-            v1 = pdl.ResultOp(c1, 0)
-            op0 = pdl.OperationOp(name="myint.add", args=[v0, v1], types=[t])
+      v0 = pdl.ResultOp(c0, 0)
+      v1 = pdl.ResultOp(c1, 0)
+      op0 = pdl.OperationOp(name="myint.add", args=[v0, v1], types=[t])
 
-            @pdl.rewrite()
-            def rew():
-                sum = pdl.apply_native_rewrite(
+      @pdl.rewrite()
+      def rew():
+        sum = pdl.apply_native_rewrite(
                     [pdl.AttributeType.get()], "add_fold", [a0, a1]
                 )
-                newOp = pdl.OperationOp(
+        newOp = pdl.OperationOp(
                     name="myint.constant", attributes={"value": sum}, types=[t]
                 )
-                pdl.ReplaceOp(op0, with_op=newOp)
+        pdl.ReplaceOp(op0, with_op=newOp)
 
-        @pdl.pattern(benefit=1, sym_name="myint_add_zero_fold")
-        def pat():
-            t = pdl.TypeOp(i32)
-            v0 = pdl.OperandOp()
-            v1 = pdl.OperandOp()
-            v = pdl.apply_native_constraint([pdl.ValueType.get()], "has_zero", [v0, v1])
-            op0 = pdl.OperationOp(name="myint.add", args=[v0, v1], types=[t])
+    @pdl.pattern(benefit=1, sym_name="myint_add_zero_fold")
+    def pat():
+      t = pdl.TypeOp(i32)
+      v0 = pdl.OperandOp()
+      v1 = pdl.OperandOp()
+      v = pdl.apply_native_constraint(
+          [pdl.ValueType.get()], "has_zero", [v0, v1]
+      )
+      op0 = pdl.OperationOp(name="myint.add", args=[v0, v1], types=[t])
 
-            @pdl.rewrite()
-            def rew():
-                pdl.ReplaceOp(op0, with_values=[v])
+      @pdl.rewrite()
+      def rew():
+        pdl.ReplaceOp(op0, with_values=[v])
 
-    def add_fold(rewriter, results, values):
-        a0, a1 = values
-        results.append(IntegerAttr.get(i32, a0.value + a1.value))
+  def add_fold(rewriter, results, values):
+    a0, a1 = values
+    results.append(IntegerAttr.get(i32, a0.value + a1.value))
+    return LogicalResult.success
 
-    def is_zero(value):
-        op = value.owner
-        if isinstance(op, Operation):
-            return op.name == "myint.constant" and op.attributes["value"].value == 0
-        return False
+  def is_zero(value):
+    op = value.owner
+    if isinstance(op, Operation):
+      return op.name == "myint.constant" and op.attributes["value"].value == 0
+    return False
 
-    # Check if either operand is a constant zero,
-    # and append the other operand to the results if so.
-    def has_zero(rewriter, results, values):
-        v0, v1 = values
-        if is_zero(v0):
-            results.append(v1)
-            return False
-        if is_zero(v1):
-            results.append(v0)
-            return False
-        return True
+  # Check if either operand is a constant zero,
+  # and append the other operand to the results if so.
+  def has_zero(_, results, values):
+    v0, v1 = values
+    if is_zero(v0):
+      results.append(v1)
+      return LogicalResult.success
+    if is_zero(v1):
+      results.append(v0)
+      return LogicalResult.success
+    return LogicalResult.failure
 
-    pdl_module = PDLModule(m)
-    pdl_module.register_rewrite_function("add_fold", add_fold)
-    pdl_module.register_constraint_function("has_zero", has_zero)
-    return pdl_module.freeze()
+  pdl_module = PDLModule(m)
+  pdl_module.register_rewrite_function("add_fold", add_fold)
+  pdl_module.register_constraint_function("has_zero", has_zero)
+  return pdl_module.freeze()
 
 
 # CHECK-LABEL: TEST: test_pdl_register_function
