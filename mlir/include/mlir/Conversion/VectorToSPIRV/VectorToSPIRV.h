@@ -34,4 +34,6 @@ void populateVectorReductionToSPIRVDotProductPatterns(
 
 } // namespace mlir
 
+#define GEN_PASS_REGISTRATION_VECTORTOSPIRVCONVERSIONPASS
+
 #endif // MLIR_CONVERSION_VECTORTOSPIRV_VECTORTOSPIRV_H
