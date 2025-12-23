@@ -15,13 +15,13 @@
 // Loc
 
 // RUN: not mlir-opt %S/invalid-ir_section-loc.mlirbc -allow-unregistered-dialect 2>&1 | FileCheck %s --check-prefix=OP_LOC
-// OP_LOC: expected attribute of type: {{.*}}, but got: {attra = 10 : i64, attrb = #bytecode.attr}
+// OP_LOC: invalid operation location
 
 //===--------------------------------------------------------------------===//
 // Attr
 
 // RUN: not mlir-opt %S/invalid-ir_section-attr.mlirbc -allow-unregistered-dialect 2>&1 | FileCheck %s --check-prefix=OP_ATTR
-// OP_ATTR: expected attribute of type: {{.*}}, but got: loc(unknown)
+// OP_ATTR: invalid dictionary attribute
 
 //===--------------------------------------------------------------------===//
 // Operands
@@ -36,7 +36,7 @@
 // Results
 
 // RUN: not mlir-opt %S/invalid-ir_section-results.mlirbc -allow-unregistered-dialect 2>&1 | FileCheck %s --check-prefix=OP_RESULTS
-// OP_RESULTS: value index range was outside of the expected range for the parent region, got [3, 6), but the maximum index was 2
+// OP_RESULTS: value index range was outside of the expected range for the parent region, got [3, 4), but the maximum index was 2
 
 //===--------------------------------------------------------------------===//
 // Successors

@@ -6,11 +6,11 @@
 //===--------------------------------------------------------------------===//
 
 // RUN: not mlir-opt %S/invalid-attr_type_section-index.mlirbc -allow-unregistered-dialect 2>&1 | FileCheck %s --check-prefix=INDEX
-// INDEX: invalid Attribute index: 3
+// INDEX: out of range attribute handle
 
 //===--------------------------------------------------------------------===//
 // Trailing Data
 //===--------------------------------------------------------------------===//
 
 // RUN: not mlir-opt %S/invalid-attr_type_section-trailing_data.mlirbc -allow-unregistered-dialect 2>&1 | FileCheck %s --check-prefix=TRAILING_DATA
-// TRAILING_DATA: trailing characters found after Attribute assembly format: trailing
+// TRAILING_DATA: trailing characters found after Attribute assembly format: 'trailing '

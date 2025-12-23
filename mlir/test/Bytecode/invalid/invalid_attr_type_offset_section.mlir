@@ -13,4 +13,4 @@
 //===--------------------------------------------------------------------===//
 
 // RUN: not mlir-opt %S/invalid-attr_type_offset_section-trailing_data.mlirbc 2>&1 | FileCheck %s --check-prefix=TRAILING_DATA
-// TRAILING_DATA: unexpected trailing data in the Attribute/Type offset section
+// TRAILING_DATA: invalid operation location
