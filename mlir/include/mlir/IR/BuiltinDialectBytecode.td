@@ -227,6 +227,8 @@ def BFloat16Type : DialectType<(type)>;
 
 def Float16Type : DialectType<(type)>;
 
+def FloatTF32Type : DialectType<(type)>;
+
 def Float32Type : DialectType<(type)>;
 
 def Float64Type : DialectType<(type)>;
@@ -234,6 +236,28 @@ def Float64Type : DialectType<(type)>;
 def Float80Type : DialectType<(type)>;
 
 def Float128Type : DialectType<(type)>;
+
+def Float8E5M2Type : DialectType<(type)>;
+
+def Float8E4M3Type : DialectType<(type)>;
+
+def Float8E4M3FNType : DialectType<(type)>;
+
+def Float8E5M2FNUZType : DialectType<(type)>;
+
+def Float8E4M3FNUZType : DialectType<(type)>;
+
+def Float8E4M3B11FNUZType : DialectType<(type)>;
+
+def Float8E3M4Type : DialectType<(type)>;
+
+def Float4E2M1FNType : DialectType<(type)>;
+
+def Float6E2M3FNType : DialectType<(type)>;
+
+def Float6E3M2FNType : DialectType<(type)>;
+
+def Float8E8M0FNUType : DialectType<(type)>;
 
 def ComplexType : DialectType<(type
   Type:$elementType
@@ -364,7 +388,19 @@ def BuiltinDialectTypes : DialectTypes<"Builtin"> {
     UnrankedMemRefTypeWithMemSpace,
     UnrankedTensorType,
     VectorType,
-    VectorTypeWithScalableDims
+    VectorTypeWithScalableDims,
+    FloatTF32Type,
+    Float8E5M2Type,
+    Float8E4M3Type,
+    Float8E4M3FNType,
+    Float8E5M2FNUZType,
+    Float8E4M3FNUZType,
+    Float8E4M3B11FNUZType,
+    Float8E3M4Type,
+    Float4E2M1FNType,
+    Float6E2M3FNType,
+    Float6E3M2FNType,
+    Float8E8M0FNUType
   ];
 }
 
