@@ -18,7 +18,8 @@
 #include <_Ccsid.h>
 #endif
 #ifdef __cplusplus
-#include "llvm/Support/ErrorOr.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/Error.h"
 #include <system_error>
 #endif /* __cplusplus */
 
@@ -40,6 +41,21 @@ int restorezOSStdHandleAutoConversion(int FD);
 
 #ifdef __cplusplus
 namespace llvm {
+
+#ifdef __MVS__
+
+/** \brief Set the tag information for a file descriptor. */
+std::error_code setzOSFileTag(int FD, int CCSID, bool Text);
+
+/** \brief Get the the tag ccsid for a file name or a file descriptor. */
+ErrorOr<__ccsid_t> getzOSFileTag(const Twine &FileName, const int FD = -1);
+
+/** \brief Query the file tag to determine if it needs conversion to UTF-8
+ *  codepage.
+ */
+ErrorOr<bool> needzOSConversion(const Twine &FileName, const int FD = -1);
+
+#endif /* __MVS__*/
 
 inline std::error_code disableAutoConversion(int FD) {
 #ifdef __MVS__
@@ -72,41 +88,13 @@ inline std::error_code setFileTag(int FD, int CCSID, bool Text) {
   return std::error_code();
 }
 
-inline ErrorOr<bool> needConversion(const char *FileName, const int FD = -1) {
+inline ErrorOr<bool> needConversion(const Twine &FileName, const int FD = -1) {
 #ifdef __MVS__
   return needzOSConversion(FileName, FD);
 #endif
   return false;
 }
 
-#ifdef __MVS__
-
-/** \brief Disable the z/OS enhanced ASCII auto-conversion for the file
- * descriptor.
- */
-std::error_code disablezOSAutoConversion(int FD);
-
-/** \brief Query the z/OS enhanced ASCII auto-conversion status of a file
- * descriptor and force the conversion if the file is not tagged with a
- * codepage.
- */
-std::error_code enablezOSAutoConversion(int FD);
-
-/** Restore the z/OS enhanced ASCII auto-conversion for the std handle. */
-std::error_code restorezOSStdHandleAutoConversion(int FD);
-
-/** \brief Set the tag information for a file descriptor. */
-std::error_code setzOSFileTag(int FD, int CCSID, bool Text);
-
-/** \brief Get the the tag ccsid for a file name or a file descriptor. */
-ErrorOr<__ccsid_t> getzOSFileTag(const char *FileName, const int FD = -1);
-
-/** \brief Query the file tag to determine if it needs conversion to UTF-8
- *  codepage.
- */
-ErrorOr<bool> needzOSConversion(const char *FileName, const int FD = -1);
-
-#endif /* __MVS__*/
 } /* namespace llvm */
 #endif /* __cplusplus */
 

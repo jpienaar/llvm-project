@@ -25,8 +25,9 @@ include "mlir/Dialect/Transform/Interfaces/TransformInterfaces.td"
 
 def AlternativesOp : TransformDialectOp<"alternatives",
     [DeclareOpInterfaceMethods<RegionBranchOpInterface,
-        ["getEntrySuccessorOperands", "getSuccessorRegions",
-         "getRegionInvocationBounds"]>,
+        ["getEntrySuccessorOperands",
+         "getRegionInvocationBounds",
+         "getSuccessorInputs"]>,
      DeclareOpInterfaceMethods<TransformOpInterface>,
      DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
      IsolatedFromAbove, PossibleTopLevelTransformOpTrait,
@@ -418,10 +419,13 @@ def ApplyRegisteredPassOp : TransformDialectOp<"apply_registered_pass",
         with options = { "top-down" = false,
                          "max-iterations" = %max_iter,
                          "test-convergence" = true,
-                         "max-num-rewrites" =  %max_rewrites }
+                         "max-num-rewrites" = %max_rewrites }
         to %module
     : (!transform.any_param, !transform.any_param, !transform.any_op) -> !transform.any_op
     ```
+
+    Options' values which are `ArrayAttr`s are converted to comma-separated
+    lists of options. Likewise for params which associate multiple values.
 
     This op first looks for a pass pipeline with the specified name. If no such
     pipeline exists, it looks for a pass with the specified name. If no such
@@ -621,7 +625,7 @@ def ForeachOp : TransformDialectOp<"foreach",
     [DeclareOpInterfaceMethods<TransformOpInterface>,
      DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
      DeclareOpInterfaceMethods<RegionBranchOpInterface, [
-         "getSuccessorRegions", "getEntrySuccessorOperands"]>,
+         "getEntrySuccessorOperands", "getSuccessorInputs"]>,
      SingleBlockImplicitTerminator<"::mlir::transform::YieldOp">
     ]> {
   let summary = "Executes the body for each element of the payload";
@@ -1234,8 +1238,9 @@ def SelectOp : TransformDialectOp<"select",
 
 def SequenceOp : TransformDialectOp<"sequence",
     [DeclareOpInterfaceMethods<RegionBranchOpInterface,
-        ["getEntrySuccessorOperands", "getSuccessorRegions",
-         "getRegionInvocationBounds"]>,
+        ["getEntrySuccessorOperands",
+         "getRegionInvocationBounds",
+         "getSuccessorInputs"]>,
      MatchOpInterface,
      DeclareOpInterfaceMethods<TransformOpInterface>,
      DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,

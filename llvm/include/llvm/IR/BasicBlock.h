@@ -63,15 +63,12 @@ class BasicBlock final : public Value, // Basic blocks are data objects also
 public:
   using InstListType = SymbolTableList<Instruction, ilist_iterator_bits<true>,
                                        ilist_parent<BasicBlock>>;
-  /// Flag recording whether or not this block stores debug-info in the form
-  /// of intrinsic instructions (false) or non-instruction records (true).
-  bool IsNewDbgInfoFormat;
 
 private:
   // Allow Function to renumber blocks.
   friend class Function;
   /// Per-function unique number.
-  unsigned Number = -1u;
+  unsigned Number = ~0u;
 
   friend class BlockAddress;
   friend class SymbolTableListTraits<BasicBlock>;
@@ -94,12 +91,6 @@ public:
   /// DbgRecords into the dbg.value intrinsic representation. Sets
   /// IsNewDbgInfoFormat = false.
   LLVM_ABI void convertFromNewDbgValues();
-
-  /// Ensure the block is in "old" dbg.value format (\p NewFlag == false) or
-  /// in the new format (\p NewFlag == true), converting to the desired format
-  /// if necessary.
-  LLVM_ABI void setIsNewDbgInfoFormat(bool NewFlag);
-  LLVM_ABI void setNewDbgInfoFormatFlag(bool NewFlag);
 
   unsigned getNumber() const {
     assert(getParent() && "only basic blocks in functions have valid numbers");
@@ -341,6 +332,17 @@ public:
     return static_cast<const BasicBlock *>(this)
         ->getFirstInsertionPt()
         .getNonConst();
+  }
+
+  /// Returns true if there is a valid insertion point for non-PHI instructions
+  /// in this block. Returns false for blocks that can only contain PHI nodes,
+  /// such as blocks with a catchswitch terminator.
+  ///
+  /// This is an O(1) check, unlike getFirstInsertionPt() which must scan
+  /// through all PHI nodes.
+  bool hasInsertionPt() const {
+    const Instruction *Term = getTerminator();
+    return Term && Term->getOpcode() != Instruction::CatchSwitch;
   }
 
   /// Returns an iterator to the first instruction in this block that is
@@ -621,9 +623,6 @@ public:
 
   /// Split the basic block into two basic blocks at the specified instruction.
   ///
-  /// If \p Before is true, splitBasicBlockBefore handles the
-  /// block splitting. Otherwise, execution proceeds as described below.
-  ///
   /// Note that all instructions BEFORE the specified iterator
   /// stay as part of the original basic block, an unconditional branch is added
   /// to the original BB, and the rest of the instructions in the BB are moved
@@ -637,11 +636,9 @@ public:
   ///
   /// Also note that this doesn't preserve any passes. To split blocks while
   /// keeping loop information consistent, use the SplitBlock utility function.
-  LLVM_ABI BasicBlock *splitBasicBlock(iterator I, const Twine &BBName = "",
-                                       bool Before = false);
-  BasicBlock *splitBasicBlock(Instruction *I, const Twine &BBName = "",
-                              bool Before = false) {
-    return splitBasicBlock(I->getIterator(), BBName, Before);
+  LLVM_ABI BasicBlock *splitBasicBlock(iterator I, const Twine &BBName = "");
+  BasicBlock *splitBasicBlock(Instruction *I, const Twine &BBName = "") {
+    return splitBasicBlock(I->getIterator(), BBName);
   }
 
   /// Split the basic block into two basic blocks at the specified instruction
@@ -759,7 +756,7 @@ public:
   /// instructions, so the order should be validated no more than once after
   /// each ordering to ensure that transforms have the same algorithmic
   /// complexity when asserts are enabled as when they are disabled.
-  void validateInstrOrdering() const;
+  LLVM_ABI_FOR_TEST void validateInstrOrdering() const;
 };
 
 // Create wrappers for C Binding types (see CBindingWrapping.h).

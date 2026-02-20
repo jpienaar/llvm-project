@@ -2,7 +2,6 @@
 ; RUN: llc < %s -disable-peephole -mtriple=x86_64-unknown-unknown -mattr=+avx -verify-machineinstrs | FileCheck %s --check-prefixes=AVX,AVX1
 ; RUN: llc < %s -disable-peephole -mtriple=x86_64-unknown-unknown -mattr=+avx2 -verify-machineinstrs | FileCheck %s --check-prefixes=AVX,AVX2
 ; RUN: llc < %s -disable-peephole -mtriple=x86_64-unknown-unknown -mattr=+f16c -verify-machineinstrs | FileCheck %s --check-prefixes=F16C
-; RUN: llc < %s -disable-peephole -mtriple=x86_64-unknown-unknown -mattr=+f16c -verify-machineinstrs | FileCheck %s --check-prefixes=F16C
 ; RUN: llc < %s -disable-peephole -mtriple=x86_64-unknown-unknown -mattr=+f16c,+fast-variable-crosslane-shuffle,+fast-variable-perlane-shuffle -verify-machineinstrs | FileCheck %s --check-prefixes=F16C
 ; RUN: llc < %s -disable-peephole -mtriple=x86_64-unknown-unknown -mattr=+f16c,+fast-variable-perlane-shuffle -verify-machineinstrs | FileCheck %s --check-prefixes=F16C
 ; RUN: llc < %s -disable-peephole -mtriple=x86_64-unknown-unknown -mattr=+avx512f -verify-machineinstrs | FileCheck %s --check-prefixes=AVX512,AVX512F
@@ -5034,7 +5033,7 @@ define <4 x i32> @fptoui_2f16_to_4i32(<2 x half> %a) nounwind {
 ; F16C-LABEL: fptoui_2f16_to_4i32:
 ; F16C:       # %bb.0:
 ; F16C-NEXT:    vxorps %xmm1, %xmm1, %xmm1
-; F16C-NEXT:    vblendps {{.*#+}} xmm0 = xmm0[0],xmm1[1,2,3]
+; F16C-NEXT:    vmovss {{.*#+}} xmm0 = xmm0[0],xmm1[1,2,3]
 ; F16C-NEXT:    vcvtph2ps %xmm0, %xmm0
 ; F16C-NEXT:    vcvttps2dq %xmm0, %xmm1
 ; F16C-NEXT:    vpsrad $31, %xmm1, %xmm2
@@ -5048,7 +5047,7 @@ define <4 x i32> @fptoui_2f16_to_4i32(<2 x half> %a) nounwind {
 ; AVX512F-LABEL: fptoui_2f16_to_4i32:
 ; AVX512F:       # %bb.0:
 ; AVX512F-NEXT:    vxorps %xmm1, %xmm1, %xmm1
-; AVX512F-NEXT:    vblendps {{.*#+}} xmm0 = xmm0[0],xmm1[1,2,3]
+; AVX512F-NEXT:    vmovss {{.*#+}} xmm0 = xmm0[0],xmm1[1,2,3]
 ; AVX512F-NEXT:    vcvtph2ps %xmm0, %xmm0
 ; AVX512F-NEXT:    vcvttps2udq %zmm0, %zmm0
 ; AVX512F-NEXT:    vmovq {{.*#+}} xmm0 = xmm0[0],zero

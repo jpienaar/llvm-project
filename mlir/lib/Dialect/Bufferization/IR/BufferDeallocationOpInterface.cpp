@@ -10,7 +10,6 @@
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/AsmState.h"
-#include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
@@ -36,7 +35,7 @@ using namespace bufferization;
 //===----------------------------------------------------------------------===//
 
 static Value buildBoolValue(OpBuilder &builder, Location loc, bool value) {
-  return builder.create<arith::ConstantOp>(loc, builder.getBoolAttr(value));
+  return arith::ConstantOp::create(builder, loc, builder.getBoolAttr(value));
 }
 
 static bool isMemref(Value v) { return isa<BaseMemRefType>(v.getType()); }
@@ -151,7 +150,7 @@ DeallocationState::getMemrefWithUniqueOwnership(OpBuilder &builder,
   // ownerships more intelligently to not end up with an 'Unknown' ownership in
   // the first place.
   auto cloneOp =
-      builder.create<bufferization::CloneOp>(memref.getLoc(), memref);
+      bufferization::CloneOp::create(builder, memref.getLoc(), memref);
   Value condition = buildBoolValue(builder, memref.getLoc(), true);
   Value newMemref = cloneOp.getResult();
   updateOwnership(newMemref, condition);
@@ -197,8 +196,8 @@ LogicalResult DeallocationState::getMemrefsAndConditionsToDeallocate(
     // Simply cast unranked MemRefs to ranked memrefs with 0 dimensions such
     // that we can call extract_strided_metadata on it.
     if (auto unrankedMemRefTy = dyn_cast<UnrankedMemRefType>(memref.getType()))
-      memref = builder.create<memref::ReinterpretCastOp>(
-          loc, memref,
+      memref = memref::ReinterpretCastOp::create(
+          builder, loc, memref,
           /*offset=*/builder.getIndexAttr(0),
           /*sizes=*/ArrayRef<OpFoldResult>{},
           /*strides=*/ArrayRef<OpFoldResult>{});
@@ -208,7 +207,7 @@ LogicalResult DeallocationState::getMemrefsAndConditionsToDeallocate(
     // alloc operation has to be passed to the dealloc operation. Passing
     // subviews, etc. to a dealloc operation is not allowed.
     memrefs.push_back(
-        builder.create<memref::ExtractStridedMetadataOp>(loc, memref)
+        memref::ExtractStridedMetadataOp::create(builder, loc, memref)
             .getResult(0));
     conditions.push_back(ownership.getIndicator());
   }
@@ -249,7 +248,12 @@ bool ValueComparator::operator()(const Value &lhs, const Value &rhs) const {
     lhsRegion = lhs.getDefiningOp()->getParentRegion();
     rhsRegion = rhs.getDefiningOp()->getParentRegion();
     if (lhsRegion == rhsRegion) {
-      return lhs.getDefiningOp()->isBeforeInBlock(rhs.getDefiningOp());
+      Block *lhsBlock = lhs.getDefiningOp()->getBlock();
+      Block *rhsBlock = rhs.getDefiningOp()->getBlock();
+      if (lhsBlock == rhsBlock) {
+        return lhs.getDefiningOp()->isBeforeInBlock(rhs.getDefiningOp());
+      }
+      return lhsBlock->computeBlockNumber() < rhsBlock->computeBlockNumber();
     }
   }
 
@@ -263,8 +267,14 @@ bool ValueComparator::operator()(const Value &lhs, const Value &rhs) const {
       return lhsRegion->getRegionNumber() < rhsRegion->getRegionNumber();
     }
     if (lhsRegion->getParentRegion() == rhsRegion->getParentRegion()) {
-      return lhsRegion->getParentOp()->isBeforeInBlock(
-          rhsRegion->getParentOp());
+      Block *lhsParentOpBlock = lhsRegion->getParentOp()->getBlock();
+      Block *rhsParentOpBlock = rhsRegion->getParentOp()->getBlock();
+      if (lhsParentOpBlock == rhsParentOpBlock) {
+        return lhsRegion->getParentOp()->isBeforeInBlock(
+            rhsRegion->getParentOp());
+      }
+      return lhsParentOpBlock->computeBlockNumber() <
+             rhsParentOpBlock->computeBlockNumber();
     }
     lhsRegion = lhsRegion->getParentRegion();
     rhsRegion = rhsRegion->getParentRegion();
@@ -297,8 +307,8 @@ FailureOr<Operation *> deallocation_impl::insertDeallocOpForReturnLike(
   if (memrefs.empty() && toRetain.empty())
     return op;
 
-  auto deallocOp = builder.create<bufferization::DeallocOp>(
-      op->getLoc(), memrefs, conditions, toRetain);
+  auto deallocOp = bufferization::DeallocOp::create(
+      builder, op->getLoc(), memrefs, conditions, toRetain);
 
   // We want to replace the current ownership of the retained values with the
   // result values of the dealloc operation as they are always unique.
