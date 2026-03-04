@@ -14,7 +14,12 @@
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+class Operation;
 namespace ml_program {
+
+/// Repopulate constants in `op` from `externalWeightsModule`.
+LogicalResult repopulateConstants(Operation *op,
+                                  Operation *externalWeightsModule);
 
 #define GEN_PASS_DECL
 #include "mlir/Dialect/MLProgram/Transforms/Passes.h.inc"
