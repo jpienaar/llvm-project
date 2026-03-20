@@ -138,6 +138,18 @@ def AmbiguousTypeQ : TestFormat_Op<[{
   $a attr-dict (`(` $c^ `:`)? `(` `:` $b `:`
 }]>, Arguments<(ins AnyAttr:$a, AnyAttr:$b, Optional<I32>:$c)>;
 
+// Test optional attribute at the end of the format.
+// CHECK: error: format ambiguity caused by optional attribute `attr` which is the last element of the format
+def AmbiguousTypeR : TestFormat_Op<[{
+  $a attr-dict $attr
+}]>, Arguments<(ins AnyAttr:$a, OptionalAttr<AnyAttr>:$attr)>;
+
+// Test optional attribute followed by another optional group.
+// CHECK-NOT: error
+def ValidTypeE : TestFormat_Op<[{
+  $attr (`(` $a^ `)`)? attr-dict
+}]>, Arguments<(ins OptionalAttr<AnyAttr>:$attr, Optional<I32>:$a)>;
+
 // CHECK-NOT: error
 
 // Test attribute followed by two optional groups with guarded colons.

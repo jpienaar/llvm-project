@@ -2729,6 +2729,9 @@ private:
   /// Verify that the attribute dictionary directive isn't followed by a region.
   LogicalResult verifyAttrDictRegion(SMLoc loc,
                                      ArrayRef<FormatElement *> elements);
+  /// Verify that an optional attribute is not the last element in the format.
+  LogicalResult verifyOptionalAttributeEnd(SMLoc loc,
+                                           ArrayRef<FormatElement *> elements);
 
   /// Verify the state of operation operands within the format.
   LogicalResult
@@ -2879,6 +2882,10 @@ OpFormatParser::verifyAttributes(SMLoc loc,
   // Both start with `{` and so the optional attribute dictionary can cause
   // format ambiguities.
   if (failed(verifyAttrDictRegion(loc, elements)))
+    return failure();
+  // Check that an optional attribute is not the last element in the format,
+  // as it could cause parsing ambiguities.
+  if (failed(verifyOptionalAttributeEnd(loc, elements)))
     return failure();
 
   // Check for VariadicOfVariadic variables. The segment attribute of those
@@ -3054,6 +3061,27 @@ OpFormatParser::verifyAttrDictRegion(SMLoc loc,
     return true;
   };
   return verifyAdjacentElements(isBase, isInvalid, elements);
+}
+
+LogicalResult
+OpFormatParser::verifyOptionalAttributeEnd(SMLoc loc,
+                                           ArrayRef<FormatElement *> elements) {
+  auto it = elements.rbegin();
+  while (it != elements.rend() &&
+         isa<WhitespaceElement, AttrDictDirective>(*it)) {
+    ++it;
+  }
+  if (it != elements.rend()) {
+    if (auto *attr = dyn_cast<AttributeVariable>(*it)) {
+      if (attr->getVar()->attr.isOptional()) {
+        return emitError(
+            loc, formatv("format ambiguity caused by optional attribute `{0}` "
+                         "which is the last element of the format",
+                         attr->getVar()->name));
+      }
+    }
+  }
+  return success();
 }
 
 LogicalResult OpFormatParser::verifyOperands(
