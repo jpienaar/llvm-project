@@ -32,7 +32,9 @@ Type AbstractType::replaceImmediateSubElements(Type type,
 // Type
 //===----------------------------------------------------------------------===//
 
-MLIRContext *Type::getContext() const { return getDialect().getContext(); }
+MLIRContext *Type::getContext() const {
+  return impl ? impl->getContext() : nullptr;
+}
 
 bool Type::isBF16() const { return llvm::isa<BFloat16Type>(*this); }
 bool Type::isF16() const { return llvm::isa<Float16Type>(*this); }

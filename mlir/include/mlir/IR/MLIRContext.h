@@ -27,6 +27,7 @@ class Action;
 class DiagnosticEngine;
 class Dialect;
 class DialectRegistry;
+class DialectEnvironment;
 class DynamicDialect;
 class InFlightDiagnostic;
 class Location;
@@ -128,6 +129,24 @@ public:
 
   /// Load all dialects available in the registry in this context.
   void loadAllAvailableDialects();
+
+  /// Adopt a frozen, shared DialectEnvironment so this (freshly-constructed,
+  /// builtin-only) context becomes "fully loaded" at ~O(empty-context) cost,
+  /// without re-running dialect loading.
+  ///
+  /// Adoption pointer-copies the environment's descriptor tables
+  /// (AbstractType/AbstractAttribute/ RegisteredOperationName descriptors +
+  /// name lookup maps), copies the StorageUniquer class registrations (so
+  /// parametric instances are interned into this context's own arenas),
+  /// references the environment's loaded Dialect objects. The caller must
+  /// ensure that `env` outlives this context. Type and Attribute instances
+  /// record their allocating context, so getContext() reports this context.
+  /// Must be called exactly once, right after construction, single-threaded.
+  void adoptSharedDialectEnvironment(DialectEnvironment *env);
+
+  /// Return the owner context of the shared DialectEnvironment adopted by this
+  /// context, or nullptr if this context has not adopted a shared environment.
+  MLIRContext *getSharedDialectEnvironmentOwner() const;
 
   /// Get (or create) a dialect for the given derived dialect name.
   /// The dialect will be loaded from the registry if no dialect is found.
@@ -319,6 +338,39 @@ private:
 
   MLIRContext(const MLIRContext &) = delete;
   void operator=(const MLIRContext &) = delete;
+};
+
+//===----------------------------------------------------------------------===//
+// DialectEnvironment
+//===----------------------------------------------------------------------===//
+
+/// A frozen, immutable dialect-registration environment that many MLIRContexts
+/// can adopt (via `MLIRContext::adoptSharedDialectEnvironment`) to become
+/// fully-loaded at ~O(empty-context) cost. It is backed by a single owner
+/// MLIRContext that is fully loaded once and then kept alive as the immutable
+/// backing store for all shared descriptor tables, dialect objects, and
+/// interned op/attr names.
+///
+/// Lifetime/threading contract: build once (single-threaded), freeze (no
+/// further dialect loading), then share across contexts (caller guarantees
+/// environment outlives adopting contexts). Concurrent READS by adopting
+/// contexts are supported; mutation after publication is not.
+class DialectEnvironment {
+public:
+  /// Build a frozen environment. `registry` must already be populated by the
+  /// caller (e.g., via `registerAllDialects`) since the core :IR library cannot
+  /// depend on the dialect registration libraries. Constructs an owner context
+  /// from `registry`, loads all available dialects, and retains the owner.
+  static std::unique_ptr<DialectEnvironment>
+  build(const DialectRegistry &registry);
+
+  ~DialectEnvironment();
+
+  /// The owner context that backs all shared state (kept alive by this env).
+  MLIRContext *getOwnerContext() const { return owner.get(); }
+
+private:
+  std::unique_ptr<MLIRContext> owner;
 };
 
 //===----------------------------------------------------------------------===//

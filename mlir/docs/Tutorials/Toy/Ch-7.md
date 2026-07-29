@@ -189,6 +189,8 @@ void ToyDialect::initialize() {
 (An important note here is that when registering a type, the definition of the
 storage class must be visible.)
 
+> **Note:** Parametric types registered via `addTypes<...>()` share their abstract type descriptors across contexts in a `DialectEnvironment`, while individual type instances are interned into each adopting context's own memory arena. This ensures that type uniqueness and memory safety remain per-context.
+
 With this we can now use our `StructType` when generating MLIR from Toy. See
 examples/toy/Ch7/mlir/MLIRGen.cpp for more details.
 

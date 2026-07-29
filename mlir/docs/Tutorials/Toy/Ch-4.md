@@ -128,6 +128,8 @@ void ToyDialect::initialize() {
 }
 ```
 
+> **Note:** Dialect interfaces attached via `addInterfaces<...>()` are owned by the `Dialect` object. When an `MLIRContext` adopts a shared `DialectEnvironment`, these registered interfaces are automatically inherited by adopting contexts without re-executing `initialize()`.
+
 Next, we need to provide a way for the inliner to know that `toy.generic_call`
 represents a call, and `toy.func` represents a function. MLIR provides
 [operation interfaces](../../Interfaces.md/#attributeoperationtype-interfaces) that can be used

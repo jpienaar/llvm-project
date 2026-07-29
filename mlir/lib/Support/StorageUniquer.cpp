@@ -165,6 +165,12 @@ public:
     return mutationFn();
   }
 
+  /// Expose the destructor function so a sibling uniquer can register a fresh
+  /// (empty) uniquer for the same storage class.
+  function_ref<void(BaseStorage *)> getDestructorFn() const {
+    return destructorFn;
+  }
+
 private:
   /// Return the shard used for the given hash value.
   Shard &getShard(unsigned hashValue) {
@@ -172,13 +178,13 @@ private:
     unsigned shardNum = hashValue & (numShards - 1);
 
     // Try to acquire an already initialized shard.
-    Shard *shard = shards[shardNum].load(std::memory_order_acquire);
+    Shard *shard = shardArray[shardNum].load(std::memory_order_acquire);
     if (shard)
       return *shard;
 
     // Otherwise, try to allocate a new shard.
     Shard *newShard = new Shard();
-    if (shards[shardNum].compare_exchange_strong(shard, newShard))
+    if (shardArray[shardNum].compare_exchange_strong(shard, newShard))
       return *newShard;
 
     // If one was allocated before we can initialize ours, delete ours.
@@ -224,6 +230,10 @@ private:
   mutate(bool threadingIsEnabled, BaseStorage *storage,
          function_ref<LogicalResult()> mutationFn) {
     return mutationFn();
+  }
+
+  function_ref<void(BaseStorage *)> getDestructorFn() const {
+    return destructorFn;
   }
 
 private:
@@ -302,6 +312,32 @@ struct StorageUniquerImpl {
   }
 
   //===--------------------------------------------------------------------===//
+  // Copy class registrations
+  //===--------------------------------------------------------------------===//
+
+  /// Copy the storage-class registrations from `other` without copying any
+  /// uniqued instances. Parametric classes get a fresh per-context uniquer that
+  /// reuses `other`'s destructor function; singleton instances are shared by
+  /// pointer. Existing registrations are preserved (try_emplace).
+  void copyClassRegistrationsFrom(
+      const StorageUniquerImpl &other,
+      function_ref<void(TypeID, BaseStorage *)> initSingleton) {
+    for (const auto &kv : other.parametricUniquers)
+      parametricUniquers.try_emplace(kv.first,
+                                     std::make_unique<ParametricStorageUniquer>(
+                                         kv.second->getDestructorFn()));
+    for (const auto &kv : other.singletonConstructors) {
+      if (!singletonInstances.count(kv.first)) {
+        BaseStorage *storage = kv.second(allocator);
+        singletonInstances.try_emplace(kv.first, storage);
+        singletonConstructors.try_emplace(kv.first, kv.second);
+        if (initSingleton)
+          initSingleton(kv.first, storage);
+      }
+    }
+  }
+
+  //===--------------------------------------------------------------------===//
   // Singleton Storage
   //===--------------------------------------------------------------------===//
 
@@ -342,6 +378,7 @@ struct StorageUniquerImpl {
   /// Map of type ids to a singleton instance when the storage class is a
   /// singleton.
   DenseMap<TypeID, BaseStorage *> singletonInstances;
+  DenseMap<TypeID, StorageUniquer::SingletonCtorFn> singletonConstructors;
 
   /// Flag specifying if multi-threading is enabled within the uniquer.
   bool threadingIsEnabled = true;
@@ -355,6 +392,13 @@ StorageUniquer::~StorageUniquer() = default;
 /// Set the flag specifying if multi-threading is disabled within the uniquer.
 void StorageUniquer::disableMultithreading(bool disable) {
   impl->threadingIsEnabled = !disable;
+}
+
+/// Copy storage-class registrations (no instances).
+void StorageUniquer::copyClassRegistrationsFrom(
+    const StorageUniquer &other,
+    function_ref<void(TypeID, BaseStorage *)> initSingleton) {
+  impl->copyClassRegistrationsFrom(*other.impl, initSingleton);
 }
 
 /// Implementation for getting/creating an instance of a derived type with
@@ -393,10 +437,12 @@ bool StorageUniquer::isParametricStorageInitialized(TypeID id) {
 /// Implementation for registering an instance of a derived type with default
 /// storage.
 void StorageUniquer::registerSingletonImpl(
-    TypeID id, function_ref<BaseStorage *(StorageAllocator &)> ctorFn) {
+    TypeID id, function_ref<BaseStorage *(StorageAllocator &)> ctorFn,
+    SingletonCtorFn cloneFn) {
   assert(!impl->singletonInstances.count(id) &&
          "storage class already registered");
   impl->singletonInstances.try_emplace(id, ctorFn(impl->allocator));
+  impl->singletonConstructors.try_emplace(id, cloneFn);
 }
 
 /// Implementation for mutating an instance of a derived storage.

@@ -269,6 +269,31 @@ protected:
   ///       with the namespace followed by '.'.
   /// Example:
   ///       - "tf" for the TensorFlow ops like "tf.add".
+  ///
+  /// Note on derived `initialize()` contracts under shared environments:
+  /// When a DialectEnvironment is shared across MLIRContexts, `initialize()` is
+  /// executed exactly once (on the environment's owner context). Adopting
+  /// contexts inherit `registeredOperations`, `registeredTypes`,
+  /// `registeredAttributes`, and `loadedDialects` (including registered dialect
+  /// interfaces) without re-running `initialize()`. Therefore, `initialize()`
+  /// must obey the following restrictions:
+  /// 1. No side-effects on per-context mutable state: Do not attach custom
+  ///    diagnostic handlers, context hooks, or allocators directly to
+  ///    `MLIRContext*` during `initialize()`, as adopting contexts will not run
+  ///    `initialize()`.
+  /// 2. Immutable dialect state: Any member variables, lookup tables, or caches
+  ///    initialized on `this` (`Dialect*`) during `initialize()` must be
+  ///    read-only/immutable after initialization, since adopting contexts share
+  ///    the owner's `Dialect` instance concurrently.
+  /// 3. Standard declarative registration (`addOperations`, `addTypes`,
+  ///    `addAttributes`, `addInterfaces`, `declarePromisedInterface`,
+  ///    `declarePromisedInterfaces`) is 100% supported and safely propagated to
+  ///    all adopting contexts.
+  ///
+  /// Note: These restrictions apply only if the dialect is intended to be used
+  /// in a shared `DialectEnvironment`. Performing per-context side-effects or
+  /// mutations inside `initialize()` is NOT a violation for dialects used
+  /// exclusively in standard, standalone `MLIRContext`s.
   Dialect(StringRef name, MLIRContext *context, TypeID id);
 
   /// This method is used by derived classes to add their operations to the set.

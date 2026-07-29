@@ -299,7 +299,7 @@ public:
     DistinctAttrStorage *storage = DistinctAttributeUniquer::allocateStorage(
         context, std::forward<Args>(args)...);
     storage->initializeAbstractAttribute(
-        AbstractAttribute::lookup(DistinctAttr::getTypeID(), context));
+        AbstractAttribute::lookup(DistinctAttr::getTypeID(), context), context);
     return storage;
   }
 

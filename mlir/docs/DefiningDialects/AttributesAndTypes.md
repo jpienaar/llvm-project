@@ -1229,3 +1229,5 @@ void MyDialect::initialize() {
   >();
 }
 ```
+
+> **Note on Shared Environments:** When attributes and types are registered via `addAttributes` and `addTypes`, their abstract descriptors are shareable across compilation contexts in a `DialectEnvironment`. Both parametric and singleton attribute/type instances are interned into each adopting context's own memory arena, ensuring thread-safety and per-context instance identity (see [Dialect Initialization Contracts](_index.md#initialization)).

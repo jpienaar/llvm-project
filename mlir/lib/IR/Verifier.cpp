@@ -273,8 +273,12 @@ LogicalResult OperationVerifier::verifyOnEntrance(Operation &op) {
   // op.getContext() is defined as location->getContext(), so opCtx is the
   // location's context by construction.  The OperationName, however, carries
   // its own context reference and can independently point elsewhere.
+  // In a shared DialectEnvironment, the OperationName descriptor may be owned
+  // by either opCtx or opCtx's shared environment owner context.
   MLIRContext *opCtx = op.getContext();
-  if (op.getName().getContext() != opCtx)
+  MLIRContext *nameCtx = op.getName().getContext();
+  if (nameCtx != opCtx &&
+      nameCtx != opCtx->getSharedDialectEnvironmentOwner())
     return op.emitError(
         "operation name from a different MLIRContext than this operation");
 

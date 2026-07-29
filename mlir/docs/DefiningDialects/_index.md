@@ -80,6 +80,18 @@ void MyDialect::initialize() {
 }
 ```
 
+**Note on Shared Environments and Multi-Threading:**
+When an `MLIRContext` adopts a shared `DialectEnvironment`, `initialize()` is executed exactly once (on the environment's owner context). Adopting contexts inherit `registeredOperations`, `registeredTypes`, `registeredAttributes`, and `loadedDialects` (including registered dialect interfaces) without re-running `initialize()`.
+
+Therefore, `initialize()` must obey the following contracts:
+1. **No side-effects on per-context mutable state:** Do not attach custom diagnostic handlers, context hooks, or allocators directly to `MLIRContext*` in `initialize()`, as adopting contexts will not run `initialize()`.
+2. **Immutable dialect state:** Any member variables, lookup tables, or caches initialized on `this` (`Dialect*`) during `initialize()` must be read-only/immutable after initialization, since adopting contexts share the owner's `Dialect` instance concurrently.
+3. **No per-context RAII ownership:** Do not acquire per-context resources in `initialize()` that rely on individual context destruction, as adopting contexts do not destroy shared `Dialect` instances.
+
+Standard declarative registration (`addOperations`, `addTypes`, `addAttributes`, `addInterfaces`, `declarePromisedInterface`) is 100% supported and safely inherited by all adopting contexts.
+
+> **Note:** These restrictions apply **only** if you want your dialect to be compatible with shared `DialectEnvironment` adoption. Performing per-context side-effects or mutations inside `initialize()` is **not a violation** for dialects used exclusively in standard, standalone `MLIRContext`s.
+
 ### Documentation
 
 The `summary` and `description` fields allow for providing user documentation

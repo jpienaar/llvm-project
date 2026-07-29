@@ -170,6 +170,7 @@ class alignas(8) AttributeStorage : public StorageUniquer::BaseStorage {
   friend detail::AttributeUniquer;
   friend detail::DistinctAttributeUniquer;
   friend StorageUniquer;
+  friend class MLIRContextImpl;
 
 public:
   /// Return the abstract descriptor for this attribute.
@@ -177,12 +178,15 @@ public:
     assert(abstractAttribute && "Malformed attribute storage object.");
     return *abstractAttribute;
   }
+  MLIRContext *getContext() const { return context; }
 
 protected:
   /// Set the abstract attribute for this storage instance. This is used by the
   /// AttributeUniquer when initializing a newly constructed storage object.
-  void initializeAbstractAttribute(const AbstractAttribute &abstractAttr) {
+  void initializeAbstractAttribute(const AbstractAttribute &abstractAttr,
+                                   MLIRContext *ctx) {
     abstractAttribute = &abstractAttr;
+    context = ctx;
   }
 
   /// Default initialization for attribute storage classes that require no
@@ -192,6 +196,7 @@ protected:
 private:
   /// The abstract descriptor for this attribute.
   const AbstractAttribute *abstractAttribute = nullptr;
+  MLIRContext *context = nullptr;
 };
 
 /// Default storage type for attributes that require no additional

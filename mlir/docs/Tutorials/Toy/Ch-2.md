@@ -310,6 +310,8 @@ void ToyDialect::initialize() {
 }
 ```
 
+> **Note:** Notice that `ToyDialect::initialize()` only performs declarative registration (`addOperations<ConstantOp>()`). Purely declarative initialization is stateless and allows the Toy dialect to be safely shared across multi-threaded compilation contexts when adopting a shared `DialectEnvironment`.
+
 ### Op vs Operation: Using MLIR Operations
 
 Now that we have defined an operation, we will want to access and transform it.

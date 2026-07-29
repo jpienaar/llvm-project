@@ -34,7 +34,9 @@ AbstractAttribute::replaceImmediateSubElements(Attribute attr,
 //===----------------------------------------------------------------------===//
 
 /// Return the context this attribute belongs to.
-MLIRContext *Attribute::getContext() const { return getDialect().getContext(); }
+MLIRContext *Attribute::getContext() const {
+  return impl ? impl->getContext() : nullptr;
+}
 
 //===----------------------------------------------------------------------===//
 // NamedAttribute

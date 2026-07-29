@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/Support/TypeID.h"
@@ -224,6 +226,48 @@ TEST(Dialect, SubsetWithExtensions) {
   context.appendDialectRegistry(registry2);
   // Expect that the extension as only invoked once.
   ASSERT_EQ(counter, 1);
+}
+
+TEST(Dialect, DialectEnvironmentAdoption) {
+  DialectRegistry registry;
+  registry.insert<TestDialect, SecondTestDialect>();
+
+  // 1. Build an immutable, shared DialectEnvironment once.
+  std::unique_ptr<DialectEnvironment> env =
+      DialectEnvironment::build(registry);
+  ASSERT_TRUE(env != nullptr);
+  ASSERT_TRUE(env->getOwnerContext() != nullptr);
+
+  // 2. Construct two independent adopting contexts.
+  MLIRContext ctxA(MLIRContext::Threading::DISABLED);
+  MLIRContext ctxB(MLIRContext::Threading::DISABLED);
+
+  ctxA.adoptSharedDialectEnvironment(env.get());
+  ctxB.adoptSharedDialectEnvironment(env.get());
+
+  // 3. Verify that dialects are loaded in both adopting contexts.
+  Dialect *dialectA = ctxA.getLoadedDialect<TestDialect>();
+  Dialect *dialectB = ctxB.getLoadedDialect<TestDialect>();
+  ASSERT_TRUE(dialectA != nullptr);
+  ASSERT_TRUE(dialectB != nullptr);
+
+  // Dialect descriptors report the shared environment owner context.
+  EXPECT_EQ(dialectA->getContext(), env->getOwnerContext());
+  EXPECT_EQ(dialectB->getContext(), env->getOwnerContext());
+
+  // 4. Verify that types and attributes created in adopting contexts are
+  // independent and correctly report their allocating context.
+  Type intA = IntegerType::get(&ctxA, 32);
+  Type intB = IntegerType::get(&ctxB, 32);
+  EXPECT_EQ(intA.getContext(), &ctxA);
+  EXPECT_EQ(intB.getContext(), &ctxB);
+  EXPECT_NE(intA, intB);
+
+  Attribute attrA = IntegerAttr::get(intA, 42);
+  Attribute attrB = IntegerAttr::get(intB, 42);
+  EXPECT_EQ(attrA.getContext(), &ctxA);
+  EXPECT_EQ(attrB.getContext(), &ctxB);
+  EXPECT_NE(attrA, attrB);
 }
 
 } // namespace

@@ -30,6 +30,10 @@ template <typename ImplTy, typename T>
 using has_impltype_hash_t = decltype(ImplTy::hashKey(std::declval<T>()));
 } // namespace detail
 
+class AbstractAttribute;
+class AbstractType;
+class MLIRContext;
+
 /// A utility class to get or create instances of "storage classes". These
 /// storage classes must derive from 'StorageUniquer::BaseStorage'.
 ///
@@ -136,11 +140,34 @@ public:
     llvm::BumpPtrAllocator allocator;
   };
 
+  using SingletonCtorFn = BaseStorage *(*)(StorageAllocator &);
+
   StorageUniquer();
   ~StorageUniquer();
 
   /// Set the flag specifying if multi-threading is disabled within the uniquer.
   void disableMultithreading(bool disable = true);
+
+  /// Copy the storage-class registrations from `other` into this uniquer
+  /// without copying any uniqued instances. For each parametric storage class,
+  /// creates a fresh per-context ParametricStorageUniquer; for each singleton
+  /// storage class, allocates a fresh per-context singleton instance in this
+  /// uniquer's arena using the registered default constructor and initializes it
+  /// via `initSingleton`. Both parametric and singleton storage classes get
+  /// per-context instance identity (`singleton_A != singleton_B` across
+  /// contexts).
+  void copyClassRegistrationsFrom(
+      const StorageUniquer &other,
+      function_ref<void(TypeID, BaseStorage *)> initSingleton = nullptr);
+
+  /// Utility helpers for initializing type and attribute storage instances
+  /// during shared dialect environment adoption.
+  static void initializeTypeStorage(BaseStorage *storage,
+                                    const AbstractType &abstractTy,
+                                    MLIRContext *ctx);
+  static void initializeAttributeStorage(BaseStorage *storage,
+                                         const AbstractAttribute &abstractAttr,
+                                         MLIRContext *ctx);
 
   /// Register a new parametric storage class, this is necessary to create
   /// instances of this class type. `id` is the type identifier that will be
@@ -166,6 +193,11 @@ public:
   /// function may also be provided to initialize the newly created storage
   /// instance, and used when the singleton instance is created.
   template <typename Storage>
+  static BaseStorage *defaultSingletonCtor(StorageAllocator &allocator) {
+    return new (allocator.allocate<Storage>()) Storage();
+  }
+
+  template <typename Storage>
   void registerSingletonStorageType(TypeID id,
                                     function_ref<void(Storage *)> initFn) {
     auto ctorFn = [&](StorageAllocator &allocator) {
@@ -174,7 +206,7 @@ public:
         initFn(storage);
       return storage;
     };
-    registerSingletonImpl(id, ctorFn);
+    registerSingletonImpl(id, ctorFn, &defaultSingletonCtor<Storage>);
   }
   template <typename Storage>
   void registerSingletonStorageType(TypeID id) {
@@ -279,7 +311,8 @@ private:
   /// storage.
   void
   registerSingletonImpl(TypeID id,
-                        function_ref<BaseStorage *(StorageAllocator &)> ctorFn);
+                        function_ref<BaseStorage *(StorageAllocator &)> ctorFn,
+                        SingletonCtorFn cloneFn);
 
   /// Implementation for mutating an instance of a derived storage.
   LogicalResult

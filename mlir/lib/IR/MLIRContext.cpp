@@ -121,6 +121,21 @@ namespace mlir {
 class MLIRContextImpl {
 public:
   //===--------------------------------------------------------------------===//
+  // Shared dialect environment adoption state.
+  //===--------------------------------------------------------------------===//
+
+  /// When non-null, this context adopted a shared DialectEnvironment: its
+  /// descriptor tables and loaded Dialect objects are (partly) non-owning
+  /// references into the environment owner's storage. The caller guarantees
+  /// that the environment outlives this context.
+  DialectEnvironment *sharedEnv = nullptr;
+
+  /// Keys in `loadedDialects` whose `unique_ptr<Dialect>` slot points at a
+  /// Dialect owned by the shared environment. These must be `release()`d before
+  /// member teardown to avoid double-freeing the environment owner's dialects.
+  SmallVector<StringRef, 0> adoptedDialectKeys;
+
+  //===--------------------------------------------------------------------===//
   // Remark
   //===--------------------------------------------------------------------===//
   std::unique_ptr<remark::detail::RemarkEngine> remarkEngine;
@@ -278,10 +293,27 @@ public:
     }
   }
   ~MLIRContextImpl() {
+    // PROTOTYPE(ApproachE): if we adopted a shared environment, some entries in
+    // `loadedDialects` are non-owning references to the environment owner's
+    // Dialect objects. Release those unique_ptr slots so member teardown does
+    // not double-free them (the owner, kept alive by `sharedEnv`, owns them).
+    for (StringRef key : adoptedDialectKeys) {
+      auto it = loadedDialects.find(key);
+      if (it != loadedDialects.end())
+        (void)it->second.release();
+    }
+    // Only destroy AbstractType/AbstractAttribute descriptors that WE
+    // allocated. Shared descriptors adopted from an environment live in the
+    // owner's `abstractDialectSymbolAllocator` and must not be destroyed here.
+    // identifyObject() returns a value only for pointers into our own arena, so
+    // for non-adopting contexts this destroys every descriptor exactly as
+    // before.
     for (auto typeMapping : registeredTypes)
-      typeMapping.second->~AbstractType();
+      if (abstractDialectSymbolAllocator.identifyObject(typeMapping.second))
+        typeMapping.second->~AbstractType();
     for (auto attrMapping : registeredAttributes)
-      attrMapping.second->~AbstractAttribute();
+      if (abstractDialectSymbolAllocator.identifyObject(attrMapping.second))
+        attrMapping.second->~AbstractAttribute();
   }
 };
 } // namespace mlir
@@ -360,6 +392,125 @@ MLIRContext::MLIRContext(const DialectRegistry &registry, Threading setting)
 MLIRContext::~MLIRContext() {
   // finalize remark engine before destroying anything else.
   impl->remarkEngine.reset();
+}
+
+//===----------------------------------------------------------------------===//
+// DialectEnvironment
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<DialectEnvironment>
+DialectEnvironment::build(const DialectRegistry &registry) {
+  auto env = std::make_unique<DialectEnvironment>();
+  // Build the owner context single-threaded and fully load it once. The owner
+  // is retained by the environment as the immutable backing store.
+  env->owner =
+      std::make_unique<MLIRContext>(registry, MLIRContext::Threading::DISABLED);
+  env->owner->loadAllAvailableDialects();
+  // Frozen from here: callers must not load further dialects into the owner.
+  return env;
+}
+
+DialectEnvironment::~DialectEnvironment() = default;
+
+void StorageUniquer::initializeTypeStorage(BaseStorage *storage,
+                                           const AbstractType &abstractTy,
+                                           MLIRContext *ctx) {
+  static_cast<TypeStorage *>(storage)->initialize(abstractTy, ctx);
+}
+
+void StorageUniquer::initializeAttributeStorage(
+    BaseStorage *storage, const AbstractAttribute &abstractAttr,
+    MLIRContext *ctx) {
+  static_cast<AttributeStorage *>(storage)->initializeAbstractAttribute(
+      abstractAttr, ctx);
+}
+
+void MLIRContext::adoptSharedDialectEnvironment(DialectEnvironment *env) {
+  assert(env && "adopting a null DialectEnvironment");
+  MLIRContext *owner = env->getOwnerContext();
+  assert(owner && owner != this && "invalid environment owner");
+  MLIRContextImpl &ownerImpl = owner->getImpl();
+  MLIRContextImpl &dstImpl = *impl;
+
+  // Record that this context has adopted the shared environment.
+  dstImpl.sharedEnv = env;
+
+  // 1. Pointer-copy the type/attribute descriptor tables (values are pointers
+  //    into the owner's abstractDialectSymbolAllocator arena; no per-descriptor
+  //    allocation, no initialize()). try_emplace preserves our own builtin
+  //    descriptors so builtin types/attrs stay genuinely per-context.
+  for (auto &kv : ownerImpl.registeredTypes)
+    dstImpl.registeredTypes.try_emplace(kv.first, kv.second);
+  for (auto &kv : ownerImpl.nameToType)
+    dstImpl.nameToType.try_emplace(kv.first, kv.second);
+  for (auto &kv : ownerImpl.registeredAttributes)
+    dstImpl.registeredAttributes.try_emplace(kv.first, kv.second);
+  for (auto &kv : ownerImpl.nameToAttribute)
+    dstImpl.nameToAttribute.try_emplace(kv.first, kv.second);
+
+  // 2. Copy StorageUniquer class registrations. Parametric classes get fresh
+  //    per-context uniquers; singleton classes allocate fresh per-context
+  //    singleton instances in this context's arena and initialize their
+  //    abstract descriptor + context pointers. Both parametric and singleton
+  //    types/attributes get per-context instance identity (`a != b`).
+  dstImpl.typeUniquer.copyClassRegistrationsFrom(
+      ownerImpl.typeUniquer,
+      [this](TypeID id, StorageUniquer::BaseStorage *storage) {
+        StorageUniquer::initializeTypeStorage(
+            storage, AbstractType::lookup(id, this), this);
+      });
+  dstImpl.attributeUniquer.copyClassRegistrationsFrom(
+      ownerImpl.attributeUniquer,
+      [this](TypeID id, StorageUniquer::BaseStorage *storage) {
+        StorageUniquer::initializeAttributeStorage(
+            storage, AbstractAttribute::lookup(id, this), this);
+      });
+  // affineUniquer is fully registered by our own constructor so nothing to
+  // share.
+
+  // 3. Pointer-copy the registered-operation descriptor tables.
+  //    RegisteredOperationName wraps an OperationName::Impl* by value, so
+  //    copying the map entries copies pointers -- the shared Impls remain owned
+  //    by the owner's `operations` StringMap. We intentionally do NOT copy the
+  //    owner's `operations` StringMap (it owns unique_ptr<Impl>): registered
+  //    ops resolve via the pointer-copied `registeredOperationsByName` fast
+  //    path (see OperationName::OperationName), and our own `operations` map
+  //    only ever holds this context's lazily-created UNregistered ops.
+  for (auto &kv : ownerImpl.registeredOperations)
+    dstImpl.registeredOperations.try_emplace(kv.first, kv.second);
+  for (auto &kv : ownerImpl.registeredOperationsByName)
+    dstImpl.registeredOperationsByName.try_emplace(kv.getKey(), kv.getValue());
+  dstImpl.sortedRegisteredOperations = ownerImpl.sortedRegisteredOperations;
+
+  // 4. Reference the owner's loaded Dialect objects so getLoadedDialect()/parse
+  //    lookups resolve to the shared dialects. These slots are NON-OWNING; the
+  //    keys are recorded in adoptedDialectKeys and release()d at teardown.
+  for (auto &kv : ownerImpl.loadedDialects) {
+    Dialect *dialect = kv.second.get();
+    auto res = dstImpl.loadedDialects.try_emplace(kv.first);
+    if (res.second) {
+      res.first->second = std::unique_ptr<Dialect>(dialect);
+      dstImpl.adoptedDialectKeys.push_back(kv.first);
+    }
+  }
+  // NOTE: per-dialect initialize() is intentionally SKIPPED -- that is exactly
+  // the ~O(fully-loaded) work this prototype avoids.
+  // This requires dialects in a shared DialectEnvironment to obey the derived
+  // initialize() contracts documented on Dialect::Dialect (in Dialect.h):
+  // (1) no side-effects on per-context mutable state outside standard
+  //     declarative registration (e.g., no custom diagnostic handler attaches);
+  // (2) state stored on the Dialect instance must be immutable after
+  //     initialization;
+  // (3) no per-context RAII / destruction ownership in initialize().
+  // Standard declarative registration (`addOperations`, `addTypes`,
+  // `addAttributes`, `addInterfaces`) is 100% supported and safely inherited.
+  // Note: These restrictions apply ONLY if the dialect is intended to be used
+  // in a shared DialectEnvironment; standard standalone MLIRContext usage is
+  // exempt.
+}
+
+MLIRContext *MLIRContext::getSharedDialectEnvironmentOwner() const {
+  return impl->sharedEnv ? impl->sharedEnv->getOwnerContext() : nullptr;
 }
 
 /// Copy the specified array of elements into memory managed by the provided
@@ -815,16 +966,22 @@ OperationName::OperationName(StringRef name, MLIRContext *context) {
 
   // Check for an existing name in read-only mode.
   bool isMultithreadingEnabled = context->isMultithreadingEnabled();
-  if (isMultithreadingEnabled) {
-    // Check the registered info map first. In the overwhelmingly common case,
-    // the entry will be in here and it also removes the need to acquire any
-    // locks.
+
+  // PROTOTYPE(ApproachE): consult the registered-operation fast path FIRST,
+  // regardless of the threading mode. This lock-free read of a table that is
+  // only mutated at dialect-load time is what the multithreaded path already
+  // relied on; hoisting it here lets an adopting context resolve registered ops
+  // via its pointer-copied `registeredOperationsByName` without owning the
+  // `operations` StringMap Impls.
+  {
     auto registeredIt = ctxImpl.registeredOperationsByName.find(name);
     if (LLVM_LIKELY(registeredIt != ctxImpl.registeredOperationsByName.end())) {
       impl = registeredIt->second.impl;
       return;
     }
+  }
 
+  if (isMultithreadingEnabled) {
     llvm::sys::SmartScopedReader<true> contextLock(ctxImpl.operationInfoMutex);
     auto it = ctxImpl.operations.find(name);
     if (it != ctxImpl.operations.end()) {
@@ -1141,7 +1298,8 @@ StorageUniquer &MLIRContext::getAttributeUniquer() {
 void AttributeUniquer::initializeAttributeStorage(AttributeStorage *storage,
                                                   MLIRContext *ctx,
                                                   TypeID attrID) {
-  storage->initializeAbstractAttribute(AbstractAttribute::lookup(attrID, ctx));
+  storage->initializeAbstractAttribute(AbstractAttribute::lookup(attrID, ctx),
+                                       ctx);
 }
 
 BoolAttr BoolAttr::get(MLIRContext *context, bool value) {

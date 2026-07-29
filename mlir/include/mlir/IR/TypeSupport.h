@@ -166,6 +166,7 @@ struct TypeUniquer;
 class TypeStorage : public StorageUniquer::BaseStorage {
   friend detail::TypeUniquer;
   friend StorageUniquer;
+  friend class MLIRContextImpl;
 
 public:
   /// Return the abstract type descriptor for this type.
@@ -173,20 +174,23 @@ public:
     assert(abstractType && "Malformed type storage object.");
     return *abstractType;
   }
+  MLIRContext *getContext() const { return context; }
 
 protected:
   /// This constructor is used by derived classes as part of the TypeUniquer.
-  TypeStorage() {}
+  TypeStorage() = default;
 
 private:
   /// Set the abstract type for this storage instance. This is used by the
   /// TypeUniquer when initializing a newly constructed type storage object.
-  void initialize(const AbstractType &abstractTy) {
+  void initialize(const AbstractType &abstractTy, MLIRContext *ctx) {
     abstractType = const_cast<AbstractType *>(&abstractTy);
+    context = ctx;
   }
 
   /// The abstract description for this type.
   AbstractType *abstractType{nullptr};
+  MLIRContext *context{nullptr};
 };
 
 /// Default storage type for types that require no additional initialization or
@@ -232,7 +236,7 @@ struct TypeUniquer {
 #endif
     return ctx->getTypeUniquer().get<typename T::ImplType>(
         [&, typeID](TypeStorage *storage) {
-          storage->initialize(AbstractType::lookup(typeID, ctx));
+          storage->initialize(AbstractType::lookup(typeID, ctx), ctx);
         },
         typeID, std::forward<Args>(args)...);
   }
@@ -289,7 +293,7 @@ struct TypeUniquer {
   registerType(MLIRContext *ctx, TypeID typeID) {
     ctx->getTypeUniquer().registerSingletonStorageType<TypeStorage>(
         typeID, [&ctx, typeID](TypeStorage *storage) {
-          storage->initialize(AbstractType::lookup(typeID, ctx));
+          storage->initialize(AbstractType::lookup(typeID, ctx), ctx);
         });
   }
 };

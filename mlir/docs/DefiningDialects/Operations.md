@@ -1263,6 +1263,8 @@ void MyDialect::initialize() {
 }
 ```
 
+> **Note on Shared Environments:** When operations are registered via `addOperations` or sharded registration helpers like `registerMyDialectOperations(this)`, those operations are safely shared across contexts that adopt a `DialectEnvironment`. Ensure that your `initialize()` method remains purely declarative and does not mutate per-context state or attach context-level hooks (see [Dialect Initialization Contracts](_index.md#initialization)).
+
 CMake and Bazel functions are included to make sharding dialects easier.
 Assuming you have organized your operation utility functions into their own
 header, define a file that looks like the one above, but without the `#define`:

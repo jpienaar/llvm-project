@@ -491,7 +491,9 @@ public:
   StringRef stripDialect() const { return getStringRef().split('.').second; }
 
   /// Return the context this operation is associated with.
-  MLIRContext *getContext() { return getIdentifier().getContext(); }
+  MLIRContext *getContext() const {
+    return impl ? impl->getName().getContext() : nullptr;
+  }
 
   /// Return the name of this operation. This always succeeds.
   StringRef getStringRef() const { return getIdentifier(); }
