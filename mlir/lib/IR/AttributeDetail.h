@@ -322,14 +322,32 @@ public:
 
   DistinctAttrStorage *allocate(Attribute referencedAttr) {
     std::scoped_lock<std::mutex> guard(allocatorMutex);
-    return new (allocator.Allocate<DistinctAttrStorage>())
+    llvm::BumpPtrAllocator &alloc =
+        transientAllocator ? *transientAllocator : allocator;
+    return new (alloc.Allocate<DistinctAttrStorage>())
         DistinctAttrStorage(referencedAttr);
-  };
+  }
+
+  void beginTransientScope() {
+    std::scoped_lock<std::mutex> guard(allocatorMutex);
+    assert(!transientAllocator &&
+           "distinct attribute allocator is already in a transient scope");
+    transientAllocator = std::make_unique<llvm::BumpPtrAllocator>();
+  }
+
+  void endTransientScope() {
+    std::scoped_lock<std::mutex> guard(allocatorMutex);
+    transientAllocator.reset();
+  }
+
+  bool isInTransientScope() const { return transientAllocator != nullptr; }
 
 private:
-  /// Used to allocate distict attribute storages. The managed memory is freed
-  /// automatically when the allocator instance is destroyed.
+  /// Used to allocate distinct attribute storages in base layer.
   llvm::BumpPtrAllocator allocator;
+
+  /// Used to allocate distinct attribute storages in transient layer.
+  std::unique_ptr<llvm::BumpPtrAllocator> transientAllocator;
 
   /// Used to lock access to the allocator.
   std::mutex allocatorMutex;
